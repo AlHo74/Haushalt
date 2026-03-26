@@ -90,6 +90,15 @@ const AGENTS = [
     icon: '⚡',
     prompt: (n,b,m) => `You are researching ${b} ${m} (${n}). Provide in German energy consumption data, eco mode tips and energy-saving advice for this device. Return plain text, no JSON.`,
   },
+  {
+    key: 'photo_analysis',
+    label: 'Foto-Analyse',
+    icon: '📸',
+    usesPhoto: true,
+    returnsJson: true,
+    system: `You are Agent 7 of Haushalt-Genie.\nAnalyze the photo of this household device.\nReturn ONLY valid JSON, no other text.\n{\n  "detected_brand": "string or null",\n  "detected_model": "string or null",\n  "serial_number": "string or null",\n  "energy_class": "string or null",\n  "manufacturing_year": "string or null",\n  "condition": "sehr gut/gut/gebraucht/stark gebraucht",\n  "condition_notes": "one short sentence in German or null",\n  "visible_specs": ["spec1", "spec2"],\n  "nameplate_text": "raw text visible on nameplate if legible, else null",\n  "confidence": "high/medium/low"\n}`,
+    prompt: (n,b,m) => `Analyze this photo of a household device (${b || ''} ${m || ''} — ${n || ''}).\nExtract all visible information: brand, model number, serial number, energy class, manufacturing year, condition, and any specs visible on the nameplate or label.\nReturn ONLY valid JSON matching the specified structure.`,
+  },
 ];
 
 // ─── State ───────────────────────────────────────────────────────────────────
@@ -180,13 +189,19 @@ function confirmDelete(id) {
 
 // ─── Research system (6 parallel agents) ─────────────────────────────────────
 async function callAgent(agent, device) {
+  if (agent.usesPhoto && !device.photo) throw new Error('Kein Foto vorhanden');
+
+  const userContent = agent.usesPhoto
+    ? [
+        { type: 'image', source: { type: 'base64', media_type: device.photoMime || 'image/jpeg', data: device.photo } },
+        { type: 'text', text: agent.prompt(device.name, device.marke, device.modell) },
+      ]
+    : agent.prompt(device.name, device.marke, device.modell);
+
   const body = {
     model: 'claude-sonnet-4-20250514',
     max_tokens: agent.returnsJson ? 800 : 1024,
-    messages: [{
-      role: 'user',
-      content: agent.prompt(device.name, device.marke, device.modell),
-    }],
+    messages: [{ role: 'user', content: userContent }],
   };
   if (agent.system) body.system = agent.system;
 
@@ -220,18 +235,22 @@ async function startResearch(deviceId) {
 
   state.research = {
     deviceId,
-    agents: AGENTS.map(a => ({ key: a.key, label: a.label, icon: a.icon, status: 'running' })),
+    agents: AGENTS.map(a => ({
+      key: a.key, label: a.label, icon: a.icon,
+      status: (a.usesPhoto && !device.photo) ? 'skipped' : 'running',
+    })),
   };
   state.detailTab = 'manual';
   state.view = 'research';
   state.selectedId = deviceId;
   render();
 
-  const promises = AGENTS.map((agent, i) =>
-    callAgent(agent, device)
-      .then(text => {
+  const promises = AGENTS.map((agent, i) => {
+    if (state.research.agents[i].status === 'skipped') return Promise.resolve();
+    return callAgent(agent, device)
+      .then(result => {
         const d = state.devices.find(x => x.id === deviceId);
-        if (d) d[agent.key] = text;
+        if (d) d[agent.key] = result;
         saveDevices();
         state.research.agents[i].status = 'done';
         render();
@@ -240,8 +259,8 @@ async function startResearch(deviceId) {
         state.research.agents[i].status = 'error';
         state.research.agents[i].error = err.message;
         render();
-      })
-  );
+      });
+  });
 
   await Promise.allSettled(promises);
 
@@ -1095,14 +1114,16 @@ function renderResearch() {
   if (!device || !state.research) { navigate('main'); return ''; }
 
   const agents = state.research.agents;
+  const activeAgents = agents.filter(a => a.status !== 'skipped');
   const doneCount = agents.filter(a => a.status === 'done').length;
-  const allDone   = doneCount === agents.length;
-  const pct = Math.round((doneCount / agents.length) * 100);
+  const allDone   = activeAgents.every(a => a.status === 'done' || a.status === 'error');
+  const pct = activeAgents.length ? Math.round((agents.filter(a => a.status === 'done' || a.status === 'error' || a.status === 'skipped').length / agents.length) * 100) : 100;
 
   const agentCards = agents.map(a => {
     const isRunning = a.status === 'running';
     const isDone    = a.status === 'done';
     const isError   = a.status === 'error';
+    const isSkipped = a.status === 'skipped';
 
     const statusEl = isRunning
       ? `<div class="spinner w-5 h-5 border-2 border-t-transparent rounded-full shrink-0" style="border-color:#0D9488; border-top-color:transparent;"></div>`
@@ -1110,17 +1131,21 @@ function renderResearch() {
         ? `<div class="w-5 h-5 rounded-full flex items-center justify-center shrink-0" style="background:#0D9488;">
              <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg>
            </div>`
-        : `<div class="w-5 h-5 rounded-full bg-red-100 flex items-center justify-center shrink-0">
-             <svg class="w-3 h-3 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3"><path d="M18 6L6 18M6 6l12 12"/></svg>
-           </div>`;
+        : isSkipped
+          ? `<div class="w-5 h-5 rounded-full bg-gray-100 flex items-center justify-center shrink-0">
+               <svg class="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M5 12h14"/></svg>
+             </div>`
+          : `<div class="w-5 h-5 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+               <svg class="w-3 h-3 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3"><path d="M18 6L6 18M6 6l12 12"/></svg>
+             </div>`;
 
     return `
-      <div class="bg-white rounded-xl border px-4 py-3 flex items-center gap-3 ${isDone ? 'border-teal-100' : isError ? 'border-red-100' : 'border-gray-100'} fade-in">
+      <div class="bg-white rounded-xl border px-4 py-3 flex items-center gap-3 ${isDone ? 'border-teal-100' : isError ? 'border-red-100' : isSkipped ? 'border-gray-100 opacity-50' : 'border-gray-100'} fade-in">
         <span class="text-xl shrink-0">${a.icon}</span>
         <div class="flex-1 min-w-0">
           <div class="text-sm font-medium text-gray-700 truncate">${a.label}</div>
-          <div class="text-xs mt-0.5 ${isDone ? 'text-teal-500' : isError ? 'text-red-400' : 'text-gray-400 pulse'}">
-            ${isDone ? 'Fertig' : isError ? (a.error || 'Fehler') : 'Wird geladen …'}
+          <div class="text-xs mt-0.5 ${isDone ? 'text-teal-500' : isError ? 'text-red-400' : isSkipped ? 'text-gray-400' : 'text-gray-400 pulse'}">
+            ${isDone ? 'Fertig' : isError ? (a.error || 'Fehler') : isSkipped ? 'Kein Foto — übersprungen' : 'Wird geladen …'}
           </div>
         </div>
         ${statusEl}
@@ -1266,9 +1291,141 @@ function renderManualTab(device) {
     </div>`;
 }
 
+async function reanalyzePhoto(deviceId) {
+  const device = state.devices.find(d => d.id === deviceId);
+  if (!device?.photo) { showToast('Kein Foto vorhanden'); return; }
+
+  const agent = AGENTS.find(a => a.key === 'photo_analysis');
+  if (!device._photoLoading) {
+    device._photoLoading = true;
+    render();
+    try {
+      const result = await callAgent(agent, device);
+      device.photo_analysis = result;
+      delete device._photoLoading;
+      saveDevices();
+    } catch (e) {
+      delete device._photoLoading;
+      showToast('Fehler: ' + e.message);
+    }
+    render();
+  }
+}
+
+function renderPhotoAnalysisTab(device) {
+  const content = device.photo_analysis;
+
+  const agentStatus = state.research?.deviceId === device.id
+    ? state.research.agents.find(a => a.key === 'photo_analysis')
+    : null;
+
+  // Loading (research or re-analysis)
+  if (device._photoLoading || agentStatus?.status === 'running') {
+    return `
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:3rem 0;gap:10px;color:var(--muted);">
+        <div class="spinner" style="width:24px;height:24px;border:2px solid var(--primary-light);border-top-color:transparent;border-radius:50%;"></div>
+        <span style="font-size:14px;" class="pulse">Foto wird analysiert …</span>
+      </div>`;
+  }
+
+  // No photo on device
+  if (!device.photo) {
+    return `
+      <div class="fade-in" style="padding:2rem 0;text-align:center;">
+        <div style="font-size:2.5rem;margin-bottom:10px;">📷</div>
+        <p style="font-size:15px;font-weight:600;color:var(--text);margin:0 0 6px;">Kein Foto hinterlegt</p>
+        <p style="font-size:13px;color:var(--muted);margin:0 0 20px;">Füge ein Foto hinzu, um Marke, Modell und Typenschild automatisch zu erkennen.</p>
+        <button onclick="navigate('add')" style="background:var(--primary);color:#fff;border:none;border-radius:10px;padding:10px 22px;font-weight:600;font-size:14px;cursor:pointer;">
+          Foto hinzufügen
+        </button>
+      </div>`;
+  }
+
+  // Skipped or no result yet
+  if (!content) {
+    return `
+      <div class="fade-in" style="padding:2rem 0;text-align:center;">
+        <div style="font-size:2.5rem;margin-bottom:10px;">📸</div>
+        <p style="font-size:15px;font-weight:600;color:var(--text);margin:0 0 6px;">Foto noch nicht analysiert</p>
+        <p style="font-size:13px;color:var(--muted);margin:0 0 20px;">KI liest Typenschild, Modellnummer und Zustand aus dem Foto.</p>
+        <button onclick="reanalyzePhoto('${device.id}')" style="background:var(--primary);color:#fff;border:none;border-radius:10px;padding:10px 22px;font-weight:600;font-size:14px;cursor:pointer;">
+          📸 Jetzt analysieren
+        </button>
+      </div>`;
+  }
+
+  // Result
+  const r = content;
+  const pill = (label, value) => value
+    ? `<div style="background:rgba(76,175,130,0.12);border-radius:10px;padding:10px 14px;display:flex;flex-direction:column;gap:2px;">
+         <span style="font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);">${label}</span>
+         <span style="font-size:14px;font-weight:600;color:var(--text);">${escHtml(value)}</span>
+       </div>`
+    : '';
+
+  const conditionColor = { 'sehr gut': '#0D9488', 'gut': '#4CAF82', 'gebraucht': '#f59e0b', 'stark gebraucht': '#ef4444' }[r.condition] || 'var(--muted)';
+
+  const specs = (r.visible_specs || []);
+
+  return `
+    <div class="fade-in">
+      <!-- Photo preview -->
+      <div style="border-radius:12px;overflow:hidden;margin-bottom:16px;height:140px;position:relative;">
+        <img src="data:${device.photoMime || 'image/jpeg'};base64,${device.photo}" style="width:100%;height:100%;object-fit:cover;">
+        <div style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.6);border-radius:20px;padding:4px 10px;font-size:11px;font-weight:600;color:#fff;">
+          Konfidenz: ${escHtml(r.confidence || '–')}
+        </div>
+      </div>
+
+      <!-- Detected info grid -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;">
+        ${pill('Marke erkannt', r.detected_brand)}
+        ${pill('Modell erkannt', r.detected_model)}
+        ${pill('Seriennummer', r.serial_number)}
+        ${pill('Energieklasse', r.energy_class)}
+        ${pill('Baujahr', r.manufacturing_year)}
+        ${r.condition ? `
+        <div style="background:rgba(76,175,130,0.12);border-radius:10px;padding:10px 14px;display:flex;flex-direction:column;gap:2px;">
+          <span style="font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);">Zustand</span>
+          <span style="font-size:14px;font-weight:600;color:${conditionColor};">${escHtml(r.condition)}</span>
+        </div>` : ''}
+      </div>
+
+      ${r.condition_notes ? `
+      <div style="background:#f8f8f6;border-radius:10px;padding:10px 12px;margin-bottom:14px;">
+        <p style="font-size:13px;color:var(--text);margin:0;">💬 ${escHtml(r.condition_notes)}</p>
+      </div>` : ''}
+
+      ${specs.length ? `
+      <div style="margin-bottom:14px;">
+        <p style="font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);margin:0 0 8px;">Sichtbare Specs</p>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;">
+          ${specs.map(s => `<span style="font-size:12px;padding:4px 10px;border-radius:20px;background:var(--border);color:var(--text);">${escHtml(s)}</span>`).join('')}
+        </div>
+      </div>` : ''}
+
+      ${r.nameplate_text ? `
+      <div style="background:#f8f8f6;border-radius:10px;padding:10px 12px;margin-bottom:14px;">
+        <p style="font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);margin:0 0 6px;">Typenschild-Text</p>
+        <p style="font-size:12px;color:var(--muted);font-family:monospace;margin:0;line-height:1.6;word-break:break-all;">${escHtml(r.nameplate_text)}</p>
+      </div>` : ''}
+
+      <!-- Re-analyze button -->
+      <button onclick="reanalyzePhoto('${device.id}')"
+        style="width:100%;border:1.5px solid var(--border);background:#fff;color:var(--muted);border-radius:10px;padding:10px;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;">
+        🔄 Erneut analysieren
+      </button>
+
+      <div style="background:#f8f8f6;border-radius:10px;padding:10px 12px;margin-top:12px;">
+        <p style="font-size:11px;color:var(--muted);margin:0;line-height:1.5;">ℹ️ KI-Analyse kann Fehler enthalten. Bitte erkannte Werte im Zweifelsfall manuell prüfen.</p>
+      </div>
+    </div>`;
+}
+
 function renderTabContent(device, tabKey) {
   if (tabKey === 'chat') return renderChatSection(device);
   if (tabKey === 'manual') return renderManualTab(device);
+  if (tabKey === 'photo_analysis') return renderPhotoAnalysisTab(device);
 
   const content = device[tabKey];
   if (content) {
@@ -1367,13 +1524,14 @@ function renderDetail() {
 
   // Display labels for tabs
   const TAB_DISPLAY = {
-    manual:       'Anleitung',
-    faqs:         'FAQs',
-    known_issues: 'Probleme & Lösungen',
-    hacks:        'Tipps',
-    spare_parts:  'Ersatzteile',
-    energy:       'Energiespartipps',
-    chat:         'Chat',
+    manual:         'Anleitung',
+    faqs:           'FAQs',
+    known_issues:   'Probleme & Lösungen',
+    hacks:          'Tipps',
+    spare_parts:    'Ersatzteile',
+    energy:         'Energiespartipps',
+    photo_analysis: 'Foto-Analyse',
+    chat:           'Chat',
   };
 
   const TABS = [
