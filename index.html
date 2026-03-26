@@ -1,0 +1,1481 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Haushalt-Genie</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root {
+      --primary: #1B5E45;
+      --primary-light: #4CAF82;
+      --bg: #F5F5F0;
+      --card-bg: #FFFFFF;
+      --text: #1A1A1A;
+      --muted: #888888;
+      --border: #E8E8E4;
+    }
+    * { -webkit-tap-highlight-color: transparent; }
+    body { background: var(--bg); }
+    .chat-bubble-user { background-color: #0D9488; }
+    .btn-primary { background-color: #0D9488; }
+    .btn-primary:hover { background-color: #0f766e; }
+    .typing-dot { animation: blink 1.2s infinite; }
+    .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+    .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes blink { 0%, 80%, 100% { opacity: 0.2; } 40% { opacity: 1; } }
+    @keyframes spin  { to { transform: rotate(360deg); } }
+    .spinner { animation: spin 0.8s linear infinite; }
+    .tab-bar { overflow-x: auto; scrollbar-width: none; }
+    .tab-bar::-webkit-scrollbar { display: none; }
+    @keyframes fadeIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
+    .fade-in { animation: fadeIn 0.3s ease both; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.45} }
+    .pulse { animation: pulse 1.6s ease-in-out infinite; }
+    /* Home screen card styles */
+    .hg-card-large  { background:var(--card-bg); border-radius:16px; overflow:hidden; position:relative; margin-bottom:12px; }
+    .hg-card-std    { background:var(--card-bg); border-radius:14px; padding:1.25rem; margin-bottom:12px; }
+    .hg-card-compact{ background:var(--card-bg); border-radius:14px; padding:1.1rem 1.25rem; margin-bottom:12px; display:flex; align-items:center; gap:14px; }
+    .hg-room-icon-green { width:44px; height:44px; border-radius:10px; background:rgba(76,175,130,0.12); display:flex; align-items:center; justify-content:center; font-size:20px; flex-shrink:0; }
+    .hg-room-icon-gray  { width:44px; height:44px; border-radius:10px; background:#F0F0EB; display:flex; align-items:center; justify-content:center; font-size:20px; flex-shrink:0; }
+    .hg-device-row  { width:100%; text-align:left; background:none; border:none; cursor:pointer; display:flex; align-items:center; gap:12px; padding:10px 0; border-top:1px solid var(--border); }
+    .hg-device-row:hover { background:none; }
+    .hg-bnav        { position:fixed; bottom:0; left:0; right:0; height:64px; background:#fff; border-top:1px solid var(--border); display:grid; grid-template-columns:repeat(4,1fr); z-index:20; }
+    .hg-bnav-item   { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; border:none; background:none; cursor:pointer; }
+    .hg-fab         { position:fixed; bottom:80px; right:20px; width:56px; height:56px; border-radius:50%; background:var(--primary); color:white; font-size:28px; line-height:1; border:none; cursor:pointer; box-shadow:0 4px 16px rgba(27,94,69,0.35); display:flex; align-items:center; justify-content:center; z-index:20; }
+  </style>
+</head>
+<body class="min-h-screen font-sans" style="background:var(--bg);">
+
+<div id="app"></div>
+
+<script>
+// ─── Agent definitions ────────────────────────────────────────────────────────
+const AGENTS = [
+  {
+    key: 'manual',
+    label: 'Bedienungsanleitung',
+    icon: '📖',
+    returnsJson: true,
+    system: `You are Agent 1 of Haushalt-Genie.\nFind the manual URL for the given device.\nReturn ONLY valid JSON, no other text.\nNever invent or guess URLs — only include URLs you are highly confident exist.\n{\n  "found": true,\n  "confidence": "high",\n  "source": "manualslib",\n  "manual_url": "https://...",\n  "pdf_url": null,\n  "pages": null,\n  "key_specs": {\n    "capacity": null,\n    "energy_class": null,\n    "special_features": []\n  },\n  "programs": [],\n  "quick_start_tips": ["Tip 1 in German", "Tip 2 in German", "Tip 3 in German"],\n  "disclaimer_level": 1\n}`,
+    prompt: (n,b,m) => `Find the Bedienungsanleitung (user manual) for: ${b} ${m} (${n}).\n\nSearch in this order:\n1. manualslib.de — most reliable. Construct URL: https://www.manualslib.de/brand/${encodeURIComponent(b.toLowerCase())}/\n2. bedienungsanleitu.ng — fallback. URL pattern: https://www.bedienungsanleitu.ng/${b.toLowerCase()}/${m.toLowerCase()}/\n3. General web: ${b} ${m} Bedienungsanleitung PDF\n\nAlso provide 3 quick_start_tips in German based on your knowledge of this device model.\nReturn ONLY valid JSON matching the specified structure. Set found:false if you are not confident a real URL exists.`,
+  },
+  {
+    key: 'faqs',
+    label: 'FAQs',
+    icon: '❓',
+    prompt: (n,b,m) => `You are researching ${b} ${m} (${n}). Generate 5 realistic FAQs with answers in German that users commonly ask about this device. Return plain text, no JSON.`,
+  },
+  {
+    key: 'known_issues',
+    label: 'Bekannte Probleme',
+    icon: '🔧',
+    prompt: (n,b,m) => `You are researching ${b} ${m} (${n}). Generate 3-5 known issues in German that users report about this device, each with a practical fix. Return plain text, no JSON.`,
+  },
+  {
+    key: 'hacks',
+    label: 'Hacks & Tipps',
+    icon: '💡',
+    prompt: (n,b,m) => `You are researching ${b} ${m} (${n}). Generate 3-5 community tips and hacks in German to get more out of this device. Return plain text, no JSON.`,
+  },
+  {
+    key: 'spare_parts',
+    label: 'Ersatzteile',
+    icon: '🔩',
+    prompt: (n,b,m) => `You are researching ${b} ${m} (${n}). List in German common spare parts and compatible accessories for this device, with example search terms for finding them online. Return plain text, no JSON.`,
+  },
+  {
+    key: 'energy',
+    label: 'Energieeffizienz',
+    icon: '⚡',
+    prompt: (n,b,m) => `You are researching ${b} ${m} (${n}). Provide in German energy consumption data, eco mode tips and energy-saving advice for this device. Return plain text, no JSON.`,
+  },
+];
+
+// ─── State ───────────────────────────────────────────────────────────────────
+const state = {
+  view: 'main',       // main | add | research | detail | settings
+  selectedId: null,
+  detailTab: 'manual',
+  chatLoading: false,
+  research: null,     // { deviceId, agents: [{key,label,icon,status,error?}] }
+  verkauf: null,
+  ersetzen: null,
+  devices: JSON.parse(localStorage.getItem('hg_devices') || '[]'),
+  chats:   JSON.parse(localStorage.getItem('hg_chats')   || '{}'),
+  apiKey:  localStorage.getItem('hg_apikey') || '',
+  addForm: mkAddForm(),
+};
+
+function mkAddForm() {
+  return { name:'', marke:'', modell:'', room:'', dataUrl:null, photo:null, mime:null, scanLoading:false, scanError:null };
+}
+
+const ROOMS = [
+  { id:'kueche',       label:'Küche',        icon:'🍳' },
+  { id:'bad',          label:'Bad',           icon:'🚿' },
+  { id:'wohnzimmer',   label:'Wohnzimmer',    icon:'🛋️' },
+  { id:'schlafzimmer', label:'Schlafzimmer',  icon:'🛏️' },
+  { id:'buero',        label:'Büro',          icon:'💻' },
+  { id:'keller',       label:'Keller',        icon:'🔧' },
+  { id:'garage',       label:'Garage',        icon:'🚗' },
+  { id:'sonstiges',    label:'Sonstiges',     icon:'📦' },
+];
+
+function roomSuggestionToId(s) {
+  if (!s) return '';
+  const l = s.toLowerCase();
+  if (l.includes('küche') || l.includes('kuche'))              return 'kueche';
+  if (l.includes('bad')   || l.includes('bath'))               return 'bad';
+  if (l.includes('wohn'))                                       return 'wohnzimmer';
+  if (l.includes('schlaf'))                                     return 'schlafzimmer';
+  if (l.includes('büro')  || l.includes('buro') || l.includes('office')) return 'buero';
+  if (l.includes('keller')|| l.includes('basement'))           return 'keller';
+  if (l.includes('garage'))                                     return 'garage';
+  return 'sonstiges';
+}
+
+// ─── Persistence ─────────────────────────────────────────────────────────────
+function saveDevices() { localStorage.setItem('hg_devices', JSON.stringify(state.devices)); }
+function saveChats()   { localStorage.setItem('hg_chats',   JSON.stringify(state.chats));   }
+
+// ─── Navigation ──────────────────────────────────────────────────────────────
+function navigate(view, id = null) {
+  if (view === 'add')    state.addForm  = mkAddForm();
+  if (view === 'detail' && id !== state.selectedId) state.detailTab = 'manual';
+  state.view = view;
+  state.selectedId = id;
+  render();
+}
+
+function setTab(tab) { state.detailTab = tab; render(); }
+
+// ─── Device actions ──────────────────────────────────────────────────────────
+function addDevice(device) {
+  device.id = crypto.randomUUID();
+  device.createdAt = Date.now();
+  state.devices.push(device);
+  saveDevices();
+  showToast('Gerät hinzugefügt ✓');
+  if (state.apiKey) {
+    startResearch(device.id);
+  } else {
+    state.detailTab = 'manual';
+    navigate('detail', device.id);
+  }
+}
+
+function deleteDevice(id) {
+  state.devices = state.devices.filter(d => d.id !== id);
+  delete state.chats[id];
+  saveDevices();
+  saveChats();
+  showToast('Gerät gelöscht');
+  navigate('main');
+}
+
+function confirmDelete(id) {
+  if (confirm('Gerät wirklich löschen? Alle Daten gehen verloren.')) deleteDevice(id);
+}
+
+// ─── Research system (6 parallel agents) ─────────────────────────────────────
+async function callAgent(agent, device) {
+  const body = {
+    model: 'claude-sonnet-4-20250514',
+    max_tokens: agent.returnsJson ? 800 : 1024,
+    messages: [{
+      role: 'user',
+      content: agent.prompt(device.name, device.marke, device.modell),
+    }],
+  };
+  if (agent.system) body.system = agent.system;
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': state.apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || `HTTP ${res.status}`);
+  }
+  const data = await res.json();
+  const text = data.content[0].text;
+
+  if (agent.returnsJson) {
+    const match = text.match(/\{[\s\S]*\}/);
+    if (!match) throw new Error('Keine JSON-Antwort erhalten');
+    return JSON.parse(match[0]); // returns object
+  }
+  return text; // returns string
+}
+
+async function startResearch(deviceId) {
+  const device = state.devices.find(d => d.id === deviceId);
+
+  state.research = {
+    deviceId,
+    agents: AGENTS.map(a => ({ key: a.key, label: a.label, icon: a.icon, status: 'running' })),
+  };
+  state.detailTab = 'manual';
+  state.view = 'research';
+  state.selectedId = deviceId;
+  render();
+
+  const promises = AGENTS.map((agent, i) =>
+    callAgent(agent, device)
+      .then(text => {
+        const d = state.devices.find(x => x.id === deviceId);
+        if (d) d[agent.key] = text;
+        saveDevices();
+        state.research.agents[i].status = 'done';
+        render();
+      })
+      .catch(err => {
+        state.research.agents[i].status = 'error';
+        state.research.agents[i].error = err.message;
+        render();
+      })
+  );
+
+  await Promise.allSettled(promises);
+
+  // Auto-navigate once all done
+  setTimeout(() => {
+    if (state.view === 'research' && state.research?.deviceId === deviceId) {
+      navigate('detail', deviceId);
+    }
+  }, 900);
+}
+
+// ─── Photo / Vision ───────────────────────────────────────────────────────────
+function resizeImage(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = e => {
+      const img = new Image();
+      img.onerror = reject;
+      img.onload = () => {
+        const MAX = 1024;
+        let { width: w, height: h } = img;
+        if (w > MAX || h > MAX) {
+          if (w >= h) { h = Math.round(h * MAX / w); w = MAX; }
+          else        { w = Math.round(w * MAX / h); h = MAX; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.78);
+        resolve({ dataUrl, base64: dataUrl.split(',')[1], mime: 'image/jpeg' });
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function analyzePhoto(base64, mime) {
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': state.apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 256,
+      messages: [{ role: 'user', content: [
+        { type: 'image', source: { type: 'base64', media_type: mime, data: base64 } },
+        { type: 'text',  text: 'Identify this household device. Return ONLY a JSON object with these fields: name, brand, model, room_suggestion (one of: Küche, Badezimmer, Wohnzimmer, Schlafzimmer, Keller, Garage, Sonstiges). If you cannot identify a field, use null.' },
+      ]}],
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || `HTTP ${res.status}`);
+  }
+  const data = await res.json();
+  const match = data.content[0].text.match(/\{[\s\S]*?\}/);
+  if (!match) throw new Error('Keine JSON-Antwort erhalten');
+  return JSON.parse(match[0]);
+}
+
+async function handlePhotoSelect(e) {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  e.target.value = '';
+  if (!state.apiKey) { showToast('Bitte zuerst API-Schlüssel in Einstellungen eingeben'); return; }
+
+  const cur = {
+    name:   document.getElementById('f-name')?.value   || '',
+    marke:  document.getElementById('f-marke')?.value  || '',
+    modell: document.getElementById('f-modell')?.value || '',
+    room:   document.getElementById('f-room')?.value   || '',
+  };
+
+  try {
+    const { dataUrl, base64, mime } = await resizeImage(file);
+    state.addForm = { ...state.addForm, ...cur, dataUrl, photo: base64, mime, scanLoading: true, scanError: null };
+    render();
+    const result = await analyzePhoto(base64, mime);
+    state.addForm = {
+      ...state.addForm,
+      name:   result.name  || cur.name,
+      marke:  result.brand || cur.marke,
+      modell: result.model || cur.modell,
+      room:   roomSuggestionToId(result.room_suggestion) || cur.room,
+      scanLoading: false,
+    };
+    render();
+    showToast('Gerät erkannt ✓');
+  } catch (err) {
+    state.addForm = { ...state.addForm, scanLoading: false, scanError: err.message };
+    render();
+  }
+}
+
+function clearPhoto() {
+  const cur = {
+    name:   document.getElementById('f-name')?.value   || state.addForm.name,
+    marke:  document.getElementById('f-marke')?.value  || state.addForm.marke,
+    modell: document.getElementById('f-modell')?.value || state.addForm.modell,
+    room:   document.getElementById('f-room')?.value   || state.addForm.room,
+  };
+  state.addForm = { ...mkAddForm(), ...cur };
+  render();
+}
+
+// ─── Chat ─────────────────────────────────────────────────────────────────────
+async function sendMessage(deviceId, userText) {
+  if (!state.chats[deviceId]) state.chats[deviceId] = [];
+  const device = state.devices.find(d => d.id === deviceId);
+  const chat = state.chats[deviceId];
+
+  chat.push({ role: 'user', content: userText });
+  state.chatLoading = true;
+  saveChats();
+  render();
+  scrollChat();
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': state.apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1024,
+        system: `Du bist Haushalt-Genie, ein präziser KI-Assistent für Haushaltsgeräte. Du hilfst dem Nutzer mit allen Fragen zu: ${device.name} (${device.marke}, Modell: ${device.modell}). Antworte immer auf Deutsch. Sei konkret und praktisch.`,
+        messages: chat.map(m => ({ role: m.role, content: m.content })),
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error?.message || `HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    chat.push({ role: 'assistant', content: data.content[0].text });
+    saveChats();
+  } catch (e) {
+    chat.push({ role: 'assistant', content: `⚠️ Fehler: ${e.message}` });
+    saveChats();
+  }
+
+  state.chatLoading = false;
+  render();
+  scrollChat();
+}
+
+function handleSend() {
+  if (state.chatLoading) return;
+  const input = document.getElementById('chat-input');
+  if (!input) return;
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  sendMessage(state.selectedId, text);
+}
+
+function scrollChat() {
+  setTimeout(() => {
+    const el = document.getElementById('chat-messages');
+    if (el) el.scrollTop = el.scrollHeight;
+  }, 30);
+}
+
+// ─── Settings ────────────────────────────────────────────────────────────────
+function saveApiKey() {
+  state.apiKey = (document.getElementById('s-apikey')?.value || '').trim();
+  localStorage.setItem('hg_apikey', state.apiKey);
+  render();
+  showToast('API-Schlüssel gespeichert ✓');
+}
+
+function resetAll() {
+  if (!confirm('Wirklich ALLE Daten löschen? Geräte, Chats und API-Schlüssel werden entfernt.')) return;
+  state.devices = []; state.chats = {}; state.apiKey = '';
+  localStorage.removeItem('hg_devices');
+  localStorage.removeItem('hg_chats');
+  localStorage.removeItem('hg_apikey');
+  navigate('main');
+}
+
+// ─── Toast ───────────────────────────────────────────────────────────────────
+function showToast(msg) {
+  const t = document.createElement('div');
+  t.className = 'fixed bottom-6 left-1/2 -translate-x-1/2 text-white text-sm px-5 py-2 rounded-full shadow-lg z-50 pointer-events-none';
+  t.style.cssText = 'background-color:#0D9488; opacity:1; transition:opacity 0.35s;';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => { t.style.opacity = '0'; }, 1800);
+  setTimeout(() => t.remove(), 2200);
+}
+
+// ─── Render helpers ──────────────────────────────────────────────────────────
+function icon(path, cls = 'w-5 h-5') {
+  return `<svg class="${cls}" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${path}"/></svg>`;
+}
+
+const ICONS = {
+  back:     'M15 19l-7-7 7-7',
+  settings: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z',
+  trash:    'M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16',
+  chevron:  'M9 5l7 7-7 7',
+  check:    'M5 13l4 4L19 7',
+  camera:   'M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z M12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8z',
+  x:        'M18 6L6 18M6 6l12 12',
+};
+
+function renderHeader(title, showBack = false, backTarget = 'main', showActions = false) {
+  return `
+    <header class="sticky top-0 z-10 shadow-sm" style="background-color:#0D9488;">
+      <div class="max-w-2xl mx-auto px-4 py-3.5 flex items-center justify-between">
+        <div class="flex items-center gap-2 min-w-0">
+          ${showBack ? `
+            <button onclick="navigate('${backTarget}')" class="shrink-0 p-1.5 rounded-full hover:bg-white/20 transition text-white mr-0.5">
+              ${icon(ICONS.back)}
+            </button>` : ''}
+          <span class="text-lg font-bold text-white truncate">${title}</span>
+        </div>
+        ${showActions ? `
+          <div class="flex items-center gap-1.5">
+            <button onclick="navigate('add')" class="bg-white font-semibold text-sm px-3 py-1.5 rounded-lg hover:bg-gray-100 transition" style="color:#0D9488;">
+              + Gerät
+            </button>
+            <button onclick="navigate('settings')" class="p-1.5 rounded-full hover:bg-white/20 transition text-white">
+              ${icon(ICONS.settings)}
+            </button>
+          </div>
+        ` : ''}
+      </div>
+    </header>`;
+}
+
+// ─── View: Main ──────────────────────────────────────────────────────────────
+function renderMain() {
+  const grouped = ROOMS.map(r => ({
+    ...r,
+    devices: state.devices.filter(d => d.room === r.id),
+  })).filter(r => r.devices.length > 0);
+
+  const chevronSvg = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9,18 15,12 9,6"/></svg>`;
+
+  function deviceRows(r) {
+    return r.devices.map(d => `
+      <button onclick="navigate('detail','${d.id}')" class="hg-device-row">
+        ${d.photo
+          ? `<img src="data:${d.photoMime};base64,${d.photo}" style="width:40px;height:40px;border-radius:8px;object-fit:cover;flex-shrink:0;">`
+          : `<div style="width:40px;height:40px;border-radius:8px;background:#F0F0EB;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">${r.icon}</div>`}
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:14px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(d.name)}</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(d.marke)} · ${escHtml(d.modell)}</div>
+        </div>
+        ${chevronSvg}
+      </button>`).join('');
+  }
+
+  const empty = state.devices.length === 0 ? `
+    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:5rem 2rem;text-align:center;">
+      <div style="font-size:3.5rem;margin-bottom:1rem;">🏠</div>
+      <h2 style="font-size:1.1rem;font-weight:600;color:var(--text);margin:0 0 6px;">Noch keine Geräte</h2>
+      <p style="font-size:0.85rem;color:var(--muted);margin:0 0 1.5rem;">Füge dein erstes Haushaltsgerät hinzu, um zu starten.</p>
+      <button onclick="navigate('add')" style="background:var(--primary);color:white;padding:0.65rem 1.5rem;border-radius:12px;font-weight:600;font-size:0.875rem;border:none;cursor:pointer;">
+        + Gerät hinzufügen
+      </button>
+    </div>` : '';
+
+  const cards = grouped.map((r, i) => {
+    const count = r.devices.length;
+    const countLabel = `${count} ${count === 1 ? 'Gerät' : 'Geräte'}`;
+
+    if (i === 0) {
+      // LARGE featured card
+      const heroImg = r.devices[0]?.photo
+        ? `<img src="data:${r.devices[0].photoMime};base64,${r.devices[0].photo}" style="width:100%;height:100%;object-fit:cover;">`
+        : '';
+      return `
+        <div class="hg-card-large">
+          <span style="position:absolute;top:0;right:0;background:var(--primary-light);color:white;font-size:10px;font-weight:700;padding:4px 10px;border-radius:0 16px 0 10px;letter-spacing:0.05em;z-index:1;">AKTIV</span>
+          <div style="display:flex;min-height:160px;">
+            <div style="flex:1;padding:1rem;display:flex;flex-direction:column;justify-content:flex-end;">
+              <div style="width:40px;height:40px;border-radius:10px;background:rgba(76,175,130,0.12);display:flex;align-items:center;justify-content:center;font-size:20px;margin-bottom:8px;">${r.icon}</div>
+              <div style="font-size:20px;font-weight:700;color:var(--text);line-height:1.2;">${r.label}</div>
+              <div style="font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);margin-top:4px;">${countLabel}</div>
+            </div>
+            <div style="width:40%;background:#F0F0EB;overflow:hidden;">${heroImg}</div>
+          </div>
+          <div style="padding:0 1rem 0.75rem;">${deviceRows(r)}</div>
+        </div>`;
+    } else if (i === grouped.length - 1 && grouped.length > 1) {
+      // COMPACT horizontal card
+      return `
+        <div class="hg-card-compact">
+          <div class="hg-room-icon-green">${r.icon}</div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:17px;font-weight:700;color:var(--text);">${r.label}</div>
+            <div style="font-size:22px;font-weight:800;color:var(--primary-light);line-height:1.2;">${countLabel}</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:2px;align-items:flex-end;">
+            ${r.devices.map(d => `
+              <button onclick="navigate('detail','${d.id}')" style="display:flex;align-items:center;gap:6px;background:none;border:none;cursor:pointer;padding:3px 0;">
+                <span style="font-size:13px;font-weight:500;color:var(--text);max-width:110px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(d.name)}</span>
+                ${chevronSvg}
+              </button>`).join('')}
+          </div>
+        </div>`;
+    } else {
+      // STANDARD card
+      return `
+        <div class="hg-card-std">
+          <div class="hg-room-icon-gray" style="margin-bottom:12px;">${r.icon}</div>
+          <div style="font-size:18px;font-weight:700;color:var(--text);">${r.label}</div>
+          <div style="font-size:11px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--muted);margin-top:2px;">${countLabel}</div>
+          ${deviceRows(r)}
+        </div>`;
+    }
+  }).join('');
+
+  const settingsSvg = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>`;
+
+  return `
+    <header style="background:#fff;padding:1rem 1.25rem;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div style="width:36px;height:36px;border-radius:50%;background:var(--primary);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <span style="color:white;font-size:11px;font-weight:700;letter-spacing:0.02em;">HG</span>
+        </div>
+        <span style="font-size:16px;font-weight:700;color:var(--text);">Haushalt-Genie</span>
+      </div>
+      <button onclick="navigate('settings')" style="background:none;border:none;cursor:pointer;color:var(--muted);padding:4px;display:flex;align-items:center;">
+        ${settingsSvg}
+      </button>
+    </header>
+
+    <div style="padding:1.25rem 1.25rem 0.5rem;">
+      <p style="font-size:11px;text-transform:uppercase;letter-spacing:0.12em;color:var(--primary-light);font-weight:600;margin:0;">SYSTEMÜBERSICHT</p>
+      <h2 style="font-size:34px;font-weight:800;line-height:1.15;color:var(--text);margin:8px 0 0;">Dein Zuhause,<br>perfekt kuratiert.</h2>
+    </div>
+
+    <div style="padding:1rem 1.25rem;">
+      <div style="background:#E8E8E4;border-radius:24px;padding:3px;display:inline-flex;">
+        <button style="background:var(--primary);color:white;border-radius:20px;padding:8px 20px;font-size:14px;font-weight:500;border:none;cursor:pointer;">Privathaushalt</button>
+        <button style="background:transparent;color:var(--muted);padding:8px 20px;font-size:14px;border:none;cursor:pointer;">Vermieter</button>
+      </div>
+    </div>
+
+    <main style="padding:0 1.25rem 1.5rem;max-width:480px;margin:0 auto;">
+      ${empty}
+      ${cards}
+    </main>
+
+    <button onclick="navigate('add')" class="hg-fab">+</button>
+
+    <nav class="hg-bnav">
+      <button onclick="navigate('main')" class="hg-bnav-item" style="color:var(--primary);">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
+        <span style="font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:0.04em;">Home</span>
+      </button>
+      <button onclick="navigate('main')" class="hg-bnav-item" style="color:var(--muted);">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        <span style="font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:0.04em;">Räume</span>
+      </button>
+      <button onclick="navigate('settings')" class="hg-bnav-item" style="color:var(--muted);">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        <span style="font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:0.04em;">Support</span>
+      </button>
+      <button onclick="navigate('settings')" class="hg-bnav-item" style="color:var(--muted);">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        <span style="font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:0.04em;">Profil</span>
+      </button>
+    </nav>`;
+}
+
+// ─── Verkauf ─────────────────────────────────────────────────────────────────
+function openVerkaufModal(deviceId) {
+  const device = state.devices.find(d => d.id === deviceId); if (!device) return;
+  state.verkauf = { deviceId, step:1, kaufpreis:'', zustand:'Gut', priceLoading:false, priceResult:null, priceError:null, finalPrice:'', listingLoading:false, listing:null, listingError:null, showSoldPrompt:false };
+  render();
+}
+function closeVerkaufModal() { state.verkauf = null; render(); }
+
+async function verkaufSchritt1(deviceId) {
+  const v = state.verkauf; if (!v || !state.apiKey) return;
+  const device = state.devices.find(d => d.id === deviceId); if (!device) return;
+  v.priceLoading = true; v.priceError = null; render();
+  const kaufjahr = device.myDevice?.kaufdatum ? device.myDevice.kaufdatum.slice(0,4) : 'unbekannt';
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', { method:'POST', headers:{'x-api-key':state.apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true','content-type':'application/json'},
+      body: JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:400,
+        system:`You are a pricing expert for second-hand household devices in Austria. Return ONLY JSON: {"min_price":number,"max_price":number,"recommended_price":number,"reasoning":"one sentence in German"}`,
+        messages:[{role:'user',content:`Device: ${device.name} ${device.marke} ${device.modell}\nOriginal price: ${v.kaufpreis||'unbekannt'} EUR\nYear: ${kaufjahr}\nCondition: ${v.zustand}`}] }) });
+    if (!resp.ok) throw new Error(`API ${resp.status}`);
+    const match = (await resp.json()).content[0].text.match(/\{[\s\S]*\}/);
+    const parsed = match ? JSON.parse(match[0]) : null; if (!parsed?.recommended_price) throw new Error('Ungültige Antwort');
+    v.priceResult = parsed; v.finalPrice = String(parsed.recommended_price); v.step = 2;
+  } catch(e) { v.priceError = e.message || 'Fehler'; }
+  v.priceLoading = false; render();
+}
+
+async function verkaufSchritt2(deviceId) {
+  const v = state.verkauf; if (!v || !state.apiKey) return;
+  const device = state.devices.find(d => d.id === deviceId); if (!device) return;
+  v.listingLoading = true; v.listingError = null; render();
+  const kaufjahr = device.myDevice?.kaufdatum ? device.myDevice.kaufdatum.slice(0,4) : 'unbekannt';
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', { method:'POST', headers:{'x-api-key':state.apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true','content-type':'application/json'},
+      body: JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:800,
+        system:`Help sell a household device on willhaben.at in friendly Austrian German. Return ONLY JSON: {"titel":"max 60 chars","beschreibung":"100-200 words","kategorie_vorschlag":"German category","suchbegriffe":["tag1","tag2","tag3"]}`,
+        messages:[{role:'user',content:`Name: ${device.name}\nMarke: ${device.marke}\nModell: ${device.modell}\nBaujahr: ${kaufjahr}\nZustand: ${v.zustand}\nPreis: ${v.finalPrice} EUR`}] }) });
+    if (!resp.ok) throw new Error(`API ${resp.status}`);
+    const match = (await resp.json()).content[0].text.match(/\{[\s\S]*\}/);
+    const parsed = match ? JSON.parse(match[0]) : null; if (!parsed?.titel) throw new Error('Ungültige Antwort');
+    v.listing = parsed; v.step = 3;
+  } catch(e) { v.listingError = e.message || 'Fehler'; }
+  v.listingLoading = false; render();
+}
+
+function verkaufKopieren(deviceId) {
+  const v = state.verkauf; if (!v?.listing) return;
+  const text = `${v.listing.titel}\nPreis: ${v.finalPrice} EUR\n\n${v.listing.beschreibung}\n\nKategorie: ${v.listing.kategorie_vorschlag}`;
+  navigator.clipboard.writeText(text).then(() => { showToast('Text kopiert!'); v.showSoldPrompt = true; render(); });
+}
+function verkaufWillhaben() { window.open('https://www.willhaben.at/iad/kaufen-und-verkaufen/marktplatz/','_blank'); state.verkauf.showSoldPrompt = true; render(); }
+function markAsSold(deviceId) { const d = state.devices.find(x => x.id === deviceId); if(d){ d.verkauft = true; saveDevices(); } closeVerkaufModal(); showToast('Als verkauft markiert ✓'); }
+
+function renderVerkaufModal(device) {
+  const v = state.verkauf; if (!v || v.deviceId !== device.id) return '';
+  const ZUSTAND = ['Wie neu','Sehr gut','Gut','Gebraucht','Defekt'];
+  const inp = `style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:10px 14px;font-size:14px;color:var(--text);outline:none;box-sizing:border-box;background:#fff;"`;
+  const prog = `<div style="display:flex;align-items:center;gap:6px;margin-bottom:20px;">${[1,2,3].map(i=>`<div style="display:flex;align-items:center;gap:6px;"><div style="width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;${v.step>=i?'background:var(--primary);color:#fff;':'background:var(--border);color:var(--muted);'}">${v.step>i?'✓':i}</div>${i<3?`<div style="height:2px;width:20px;background:${v.step>i?'var(--primary)':'var(--border)'};">&zwnj;</div>`:''}</div>`).join('')}<span style="font-size:12px;color:var(--muted);margin-left:4px;">Schritt ${v.step}/3</span></div>`;
+  let body = '';
+  if (v.step === 1) {
+    body = `<h3 style="font-size:16px;font-weight:700;color:var(--text);margin:0 0 4px;">Zeitwert-Schätzung</h3><p style="font-size:13px;color:var(--muted);margin:0 0 16px;">Angaben für eine realistische Preisschätzung</p>
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <div><label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px;">Kaufpreis (EUR)</label><input type="number" value="${escHtml(v.kaufpreis)}" placeholder="0" min="0" oninput="state.verkauf.kaufpreis=this.value" ${inp}></div>
+      <div><label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px;">Zustand</label><select oninput="state.verkauf.zustand=this.value" ${inp}>${ZUSTAND.map(z=>`<option ${v.zustand===z?'selected':''}>${z}</option>`).join('')}</select></div>
+    </div>
+    ${v.priceError ? `<p style="margin-top:12px;font-size:13px;color:#c0392b;background:#fdf2f2;border-radius:8px;padding:8px 12px;">⚠️ ${escHtml(v.priceError)}</p>` : ''}
+    ${!state.apiKey ? `<p style="margin-top:12px;font-size:13px;color:#b45309;background:#fffbf0;border-radius:8px;padding:8px 12px;">🔑 Kein API-Schlüssel. <button onclick="closeVerkaufModal();navigate('settings')" style="font-weight:600;text-decoration:underline;background:none;border:none;cursor:pointer;color:#b45309;">Einrichten →</button></p>` : ''}
+    <div style="display:flex;gap:8px;margin-top:20px;">
+      <button onclick="closeVerkaufModal()" style="flex:1;border:1.5px solid var(--border);color:var(--muted);background:#fff;border-radius:10px;padding:11px;font-weight:600;font-size:14px;cursor:pointer;">Abbrechen</button>
+      <button onclick="verkaufSchritt1('${device.id}')" ${!state.apiKey||v.priceLoading?'disabled':''} style="flex:1;background:var(--primary);color:#fff;border:none;border-radius:10px;padding:11px;font-weight:600;font-size:14px;cursor:pointer;opacity:${!state.apiKey||v.priceLoading?'0.5':'1'};display:flex;align-items:center;justify-content:center;gap:8px;">${v.priceLoading?`<div class="spinner" style="width:16px;height:16px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;"></div>`:''}${v.priceLoading?'Schätze …':'Preis schätzen →'}</button>
+    </div>`;
+  } else if (v.step === 2) {
+    const pr = v.priceResult;
+    body = `<h3 style="font-size:16px;font-weight:700;color:var(--text);margin:0 0 12px;">Preisvorschlag</h3>
+    <div style="background:rgba(76,175,130,0.1);border-radius:12px;padding:16px;margin-bottom:16px;">
+      <div style="display:flex;align-items:flex-end;gap:16px;margin-bottom:8px;">
+        <div style="text-align:center;"><div style="font-size:11px;color:var(--muted);">Min</div><div style="font-weight:700;color:var(--text);">${pr.min_price} €</div></div>
+        <div style="text-align:center;flex:1;"><div style="font-size:11px;font-weight:600;color:var(--primary);margin-bottom:2px;">Empfehlung</div><div style="font-size:24px;font-weight:800;color:var(--primary);">${pr.recommended_price} €</div></div>
+        <div style="text-align:center;"><div style="font-size:11px;color:var(--muted);">Max</div><div style="font-weight:700;color:var(--text);">${pr.max_price} €</div></div>
+      </div>
+      <p style="font-size:12px;color:var(--muted);margin:0;border-top:1px solid rgba(76,175,130,0.2);padding-top:8px;">${escHtml(pr.reasoning)}</p>
+    </div>
+    <div><label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px;">Dein Verkaufspreis (EUR)</label><input type="number" value="${escHtml(v.finalPrice)}" min="0" oninput="state.verkauf.finalPrice=this.value" ${inp}></div>
+    ${v.listingError ? `<p style="margin-top:12px;font-size:13px;color:#c0392b;background:#fdf2f2;border-radius:8px;padding:8px 12px;">⚠️ ${escHtml(v.listingError)}</p>` : ''}
+    <div style="display:flex;gap:8px;margin-top:20px;">
+      <button onclick="state.verkauf.step=1;render()" style="flex:1;border:1.5px solid var(--border);color:var(--muted);background:#fff;border-radius:10px;padding:11px;font-weight:600;font-size:14px;cursor:pointer;">← Zurück</button>
+      <button onclick="verkaufSchritt2('${device.id}')" ${v.listingLoading?'disabled':''} style="flex:1;background:var(--primary);color:#fff;border:none;border-radius:10px;padding:11px;font-weight:600;font-size:14px;cursor:pointer;opacity:${v.listingLoading?'0.5':'1'};display:flex;align-items:center;justify-content:center;gap:8px;">${v.listingLoading?`<div class="spinner" style="width:16px;height:16px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;"></div>Generiere …`:'Inserat generieren →'}</button>
+    </div>`;
+  } else if (v.step === 3) {
+    const l = v.listing;
+    body = `<h3 style="font-size:16px;font-weight:700;color:var(--text);margin:0 0 16px;">Inseratsvorschau</h3>
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <div><label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px;">Titel</label><input type="text" value="${escHtml(l.titel)}" oninput="state.verkauf.listing.titel=this.value" maxlength="60" ${inp} style="font-weight:600;"></div>
+      <div><label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px;">Preis (EUR)</label><input type="number" value="${escHtml(v.finalPrice)}" min="0" oninput="state.verkauf.finalPrice=this.value" ${inp}></div>
+      <div><label style="font-size:12px;color:var(--muted);display:block;margin-bottom:4px;">Beschreibung</label><textarea rows="5" oninput="state.verkauf.listing.beschreibung=this.value" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:10px 14px;font-size:14px;color:var(--text);outline:none;resize:none;box-sizing:border-box;">${escHtml(l.beschreibung)}</textarea></div>
+      <div style="background:var(--bg);border-radius:8px;padding:10px 12px;font-size:13px;color:var(--muted);">Kategorie: <span style="color:var(--text);font-weight:500;">${escHtml(l.kategorie_vorschlag)}</span></div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;">${(l.suchbegriffe||[]).map(t=>`<span style="font-size:12px;font-weight:600;padding:4px 10px;border-radius:20px;background:rgba(76,175,130,0.12);color:var(--primary);">${escHtml(t)}</span>`).join('')}</div>
+    </div>
+    ${v.showSoldPrompt ? `
+    <div style="margin-top:16px;background:#fffbf0;border:1px solid #fde68a;border-radius:12px;padding:14px;">
+      <p style="font-size:14px;font-weight:600;color:#92400e;margin:0 0 10px;">Gerät als verkauft markieren?</p>
+      <div style="display:flex;gap:8px;">
+        <button onclick="markAsSold('${device.id}')" style="flex:1;background:var(--primary);color:#fff;border:none;border-radius:10px;padding:10px;font-weight:600;font-size:14px;cursor:pointer;">Ja, verkauft ✓</button>
+        <button onclick="closeVerkaufModal()" style="flex:1;border:1.5px solid #fde68a;color:#92400e;background:#fff;border-radius:10px;padding:10px;font-weight:600;font-size:14px;cursor:pointer;">Nein</button>
+      </div>
+    </div>` : `
+    <div style="display:flex;gap:8px;margin-top:20px;">
+      <button onclick="verkaufKopieren('${device.id}')" style="flex:1;background:var(--primary);color:#fff;border:none;border-radius:10px;padding:11px;font-weight:600;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;">📋 Kopieren</button>
+      <button onclick="verkaufWillhaben()" style="flex:1;border:1.5px solid var(--border);color:var(--text);background:#fff;border-radius:10px;padding:11px;font-weight:600;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;">🔗 willhaben</button>
+    </div>`}`;
+  }
+  return `<div style="position:fixed;inset:0;z-index:50;display:flex;align-items:flex-end;justify-content:center;background:rgba(0,0,0,0.5);" onclick="if(event.target===this)closeVerkaufModal()">
+    <div style="background:#fff;width:100%;max-width:480px;border-radius:20px 20px 0 0;padding:20px;max-height:92vh;overflow-y:auto;" class="fade-in">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--border);">
+        <span style="font-size:16px;font-weight:700;color:var(--text);">🏷️ Inserat vorbereiten</span>
+        <button onclick="closeVerkaufModal()" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:20px;line-height:1;">×</button>
+      </div>
+      ${prog}${body}
+    </div>
+  </div>`;
+}
+
+// ─── Ersetzen ────────────────────────────────────────────────────────────────
+const ERSETZEN_GRUENDE = [
+  {id:'alt',label:'Zu alt oder veraltet',icon:'⏰'},{id:'defekt',label:'Defekt',icon:'🔧'},
+  {id:'upgrade',label:'Upgrade gewünscht',icon:'⬆️'},{id:'verkauf',label:'Verkaufen & ersetzen',icon:'🏷️'},
+  {id:'energie',label:'Bessere Energieeffizienz',icon:'⚡'},{id:'sonstig',label:'Sonstiges',icon:'•••'},
+];
+const ERSETZEN_PRIOS = [
+  {id:'preis',label:'Preis / Sparsamkeit'},{id:'energie',label:'Energieeffizienz'},
+  {id:'features',label:'Moderne Features'},{id:'qualitaet',label:'Markenqualität'},
+  {id:'bedienung',label:'Einfache Bedienung'},
+];
+
+function openErsetzenModal(deviceId) {
+  const device = state.devices.find(d => d.id === deviceId); if (!device) return;
+  const budgetMax = /waschmaschine|kühlschrank|herd|backofen/i.test(device.name) ? 3000 : /fernseher|tv/i.test(device.name) ? 5000 : 2000;
+  state.ersetzen = { deviceId, step:1, grund:null, budgetLow:100, budgetHigh:Math.round(budgetMax*0.4), budgetMin:50, budgetMax, preisWichtigkeit:'Ausgeglichen', featuresLoading:false, featuresError:null, featureQuestions:null, prios:ERSETZEN_PRIOS.map(p=>p.id), recoLoading:false, recoError:null, recommendations:null, recoSummary:'', expandedReco:null };
+  render();
+}
+function closeErsetzenModal() { state.ersetzen = null; render(); }
+
+async function ersetzenLadeFeatures(deviceId) {
+  const e = state.ersetzen; if (!e || !state.apiKey) return;
+  const device = state.devices.find(d => d.id === deviceId); if (!device) return;
+  e.featuresLoading = true; e.featuresError = null; render();
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', { method:'POST', headers:{'x-api-key':state.apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true','content-type':'application/json'},
+      body: JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:600,
+        system:`Generate feature questions for device replacement. Return ONLY JSON array.`,
+        messages:[{role:'user',content:`Replace: ${device.name} (${device.marke} ${device.modell}). Generate 4 questions in German. Return ONLY: [{"question":"...","type":"yesno","options":[]}]`}] }) });
+    if (!resp.ok) throw new Error(`API ${resp.status}`);
+    const match = (await resp.json()).content[0].text.match(/\[[\s\S]*\]/);
+    const parsed = match ? JSON.parse(match[0]) : null; if (!Array.isArray(parsed)||!parsed.length) throw new Error('Ungültige Antwort');
+    e.featureQuestions = parsed.map(q => ({...q, answer:null})); e.step = 3;
+  } catch(err) { e.featuresError = err.message || 'Fehler'; }
+  e.featuresLoading = false; render();
+}
+
+async function ersetzenLadeEmpfehlungen(deviceId) {
+  const e = state.ersetzen; if (!e || !state.apiKey) return;
+  const device = state.devices.find(d => d.id === deviceId); if (!device) return;
+  e.recoLoading = true; e.recoError = null; render();
+  const grundLabel = ERSETZEN_GRUENDE.find(g=>g.id===e.grund)?.label || e.grund;
+  const prioLabels = e.prios.map((id,i)=>`${i+1}. ${ERSETZEN_PRIOS.find(p=>p.id===id)?.label||id}`).join(', ');
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', { method:'POST', headers:{'x-api-key':state.apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true','content-type':'application/json'},
+      body: JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:1500,
+        system:`Expert consumer electronics advisor for Austria. Return ONLY JSON: {"summary":"one sentence German","recommendations":[{"rank":1,"name":"Full name","brand":"Brand","price_estimate":"ca. EUR X-Y","why":"2 sentences German","top_features":["f1","f2"],"energy_class":"A++","search_term":"search term"}]}`,
+        messages:[{role:'user',content:`Replace: ${device.marke} ${device.modell} ${device.name}.\nReason: ${grundLabel}\nBudget: EUR ${e.budgetLow}–${e.budgetHigh}, importance: ${e.preisWichtigkeit}\nPriorities: ${prioLabels}\nProvide exactly 3 recommendations.`}] }) });
+    if (!resp.ok) throw new Error(`API ${resp.status}`);
+    const match = (await resp.json()).content[0].text.match(/\{[\s\S]*\}/);
+    const parsed = match ? JSON.parse(match[0]) : null; if (!parsed?.recommendations?.length) throw new Error('Ungültige Antwort');
+    e.recommendations = parsed.recommendations; e.recoSummary = parsed.summary||''; e.step = 5;
+  } catch(err) { e.recoError = err.message || 'Fehler'; }
+  e.recoLoading = false; render();
+}
+
+function ersetzenMovePrio(from, to) { const e = state.ersetzen; if(!e) return; const arr=[...e.prios]; const [item]=arr.splice(from,1); arr.splice(to,0,item); e.prios=arr; render(); }
+
+function renderErsetzenModal(device) {
+  const e = state.ersetzen; if (!e || e.deviceId !== device.id) return '';
+  const prog = `<div style="display:flex;gap:4px;margin-bottom:20px;">${[1,2,3,4,5].map(i=>`<div style="flex:1;height:4px;border-radius:2px;background:${i<=e.step?'var(--primary)':'var(--border)'};">&zwnj;</div>`).join('')}<span style="font-size:12px;color:var(--muted);margin-left:8px;flex-shrink:0;">${e.step}/5</span></div>`;
+  const inp = `style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:10px 14px;font-size:14px;color:var(--text);outline:none;box-sizing:border-box;"`;
+  let body = '';
+  if (e.step === 1) {
+    body = `<h3 style="font-size:16px;font-weight:700;margin:0 0 4px;">Warum ersetzen?</h3>
+    <p style="font-size:13px;color:var(--muted);margin:0 0 16px;">${escHtml(device.name)}</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+      ${ERSETZEN_GRUENDE.map(g=>`<button onclick="state.ersetzen.grund='${g.id}';render()" style="display:flex;flex-direction:column;align-items:flex-start;gap:6px;padding:12px;border-radius:12px;border:2px solid ${e.grund===g.id?'var(--primary)':'var(--border)'};background:${e.grund===g.id?'rgba(76,175,130,0.08)':'#fff'};cursor:pointer;text-align:left;">
+        <span style="font-size:18px;">${g.icon}</span><span style="font-size:12px;font-weight:600;color:var(--text);line-height:1.3;">${g.label}</span>
+      </button>`).join('')}
+    </div>
+    <button onclick="if(state.ersetzen.grund){state.ersetzen.step=2;render();}" ${!e.grund?'disabled':''} style="margin-top:20px;width:100%;background:var(--primary);color:#fff;border:none;border-radius:10px;padding:13px;font-weight:600;font-size:14px;cursor:pointer;opacity:${!e.grund?'0.4':'1'};">Weiter →</button>`;
+  } else if (e.step === 2) {
+    body = `<h3 style="font-size:16px;font-weight:700;margin:0 0 16px;">Was ist dein Budget?</h3>
+    <div style="background:rgba(76,175,130,0.1);border-radius:12px;padding:16px;margin-bottom:16px;text-align:center;">
+      <div style="font-size:22px;font-weight:800;color:var(--primary);">EUR ${e.budgetLow} — EUR ${e.budgetHigh}</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:16px;">
+      <div><label style="font-size:12px;color:var(--muted);display:flex;justify-content:space-between;margin-bottom:4px;"><span>Minimum</span><span style="font-weight:600;color:var(--primary);">${e.budgetLow} EUR</span></label><input type="range" min="${e.budgetMin}" max="${e.budgetMax}" value="${e.budgetLow}" step="10" oninput="if(parseInt(this.value)<state.ersetzen.budgetHigh){state.ersetzen.budgetLow=parseInt(this.value);render();}" style="width:100%;accent-color:var(--primary);"></div>
+      <div><label style="font-size:12px;color:var(--muted);display:flex;justify-content:space-between;margin-bottom:4px;"><span>Maximum</span><span style="font-weight:600;color:var(--primary);">${e.budgetHigh} EUR</span></label><input type="range" min="${e.budgetMin}" max="${e.budgetMax}" value="${e.budgetHigh}" step="10" oninput="if(parseInt(this.value)>state.ersetzen.budgetLow){state.ersetzen.budgetHigh=parseInt(this.value);render();}" style="width:100%;accent-color:var(--primary);"></div>
+    </div>
+    <p style="font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin:0 0 8px;">Wie wichtig ist der Preis?</p>
+    <div style="display:flex;gap:6px;margin-bottom:20px;">${['Sehr wichtig','Ausgeglichen','Egal'].map(opt=>`<button onclick="state.ersetzen.preisWichtigkeit='${opt}';render()" style="flex:1;padding:8px 4px;border-radius:10px;border:2px solid ${e.preisWichtigkeit===opt?'var(--primary)':'var(--border)'};background:${e.preisWichtigkeit===opt?'var(--primary)':'#fff'};color:${e.preisWichtigkeit===opt?'#fff':'var(--muted)'};font-size:12px;font-weight:600;cursor:pointer;">${opt}</button>`).join('')}</div>
+    <div style="display:flex;gap:8px;">
+      <button onclick="state.ersetzen.step=1;render()" style="flex:1;border:1.5px solid var(--border);color:var(--muted);background:#fff;border-radius:10px;padding:11px;font-weight:600;font-size:14px;cursor:pointer;">← Zurück</button>
+      <button onclick="${!state.apiKey?`closeErsetzenModal();navigate('settings')`:`ersetzenLadeFeatures('${device.id}')`}" ${e.featuresLoading?'disabled':''} style="flex:1;background:var(--primary);color:#fff;border:none;border-radius:10px;padding:11px;font-weight:600;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;opacity:${e.featuresLoading?'0.6':'1'};">${e.featuresLoading?`<div class="spinner" style="width:16px;height:16px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;"></div>`:''} ${e.featuresLoading?'Lade …':state.apiKey?'Weiter →':'🔑 API einrichten'}</button>
+    </div>
+    ${e.featuresError ? `<p style="margin-top:10px;font-size:13px;color:#c0392b;background:#fdf2f2;border-radius:8px;padding:8px 12px;">⚠️ ${escHtml(e.featuresError)}</p>` : ''}`;
+  } else if (e.step === 3) {
+    const allAnswered = e.featureQuestions?.every(q => q.answer !== null);
+    body = `<h3 style="font-size:16px;font-weight:700;margin:0 0 4px;">Welche Features sind wichtig?</h3>
+    <p style="font-size:13px;color:var(--muted);margin:0 0 16px;">Beantworte kurz ein paar Fragen.</p>
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      ${(e.featureQuestions||[]).map((q,qi)=>`<div style="background:var(--bg);border-radius:12px;padding:14px;">
+        <p style="font-size:14px;font-weight:600;color:var(--text);margin:0 0 10px;">${escHtml(q.question)}</p>
+        <div style="display:flex;gap:8px;">${['Ja','Nein'].map(opt=>`<button onclick="state.ersetzen.featureQuestions[${qi}].answer='${opt}';render()" style="flex:1;padding:8px;border-radius:10px;border:2px solid ${q.answer===opt?'var(--primary)':'var(--border)'};background:${q.answer===opt?'var(--primary)':'#fff'};color:${q.answer===opt?'#fff':'var(--muted)'};font-size:13px;font-weight:600;cursor:pointer;">${opt}</button>`).join('')}</div>
+      </div>`).join('')}
+    </div>
+    <div style="display:flex;gap:8px;margin-top:20px;">
+      <button onclick="state.ersetzen.step=2;render()" style="flex:1;border:1.5px solid var(--border);color:var(--muted);background:#fff;border-radius:10px;padding:11px;font-weight:600;font-size:14px;cursor:pointer;">← Zurück</button>
+      <button onclick="if(${allAnswered?'true':'false'}){state.ersetzen.step=4;render();}" ${!allAnswered?'disabled':''} style="flex:1;background:var(--primary);color:#fff;border:none;border-radius:10px;padding:11px;font-weight:600;font-size:14px;cursor:pointer;opacity:${!allAnswered?'0.4':'1'};">Weiter →</button>
+    </div>`;
+  } else if (e.step === 4) {
+    body = `<h3 style="font-size:16px;font-weight:700;margin:0 0 4px;">Prioritäten festlegen</h3>
+    <p style="font-size:13px;color:var(--muted);margin:0 0 16px;">Tippe ↑/↓ zum Sortieren.</p>
+    <div style="display:flex;flex-direction:column;gap:6px;">
+      ${e.prios.map((id,i) => { const p = ERSETZEN_PRIOS.find(x=>x.id===id); return `<div style="display:flex;align-items:center;gap:10px;background:var(--bg);border-radius:12px;padding:12px 14px;">
+        <span style="width:24px;height:24px;border-radius:50%;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;">${i+1}</span>
+        <span style="flex:1;font-size:14px;font-weight:600;color:var(--text);">${p?.label||id}</span>
+        <div style="display:flex;gap:2px;">${i>0?`<button onclick="ersetzenMovePrio(${i},${i-1})" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:16px;padding:2px 6px;">↑</button>`:'<span style="width:30px;"></span>'}${i<e.prios.length-1?`<button onclick="ersetzenMovePrio(${i},${i+1})" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:16px;padding:2px 6px;">↓</button>`:'<span style="width:30px;"></span>'}</div>
+      </div>`; }).join('')}
+    </div>
+    <div style="display:flex;gap:8px;margin-top:20px;">
+      <button onclick="state.ersetzen.step=3;render()" style="flex:1;border:1.5px solid var(--border);color:var(--muted);background:#fff;border-radius:10px;padding:11px;font-weight:600;font-size:14px;cursor:pointer;">← Zurück</button>
+      <button onclick="ersetzenLadeEmpfehlungen('${device.id}')" ${e.recoLoading?'disabled':''} style="flex:1;background:var(--primary);color:#fff;border:none;border-radius:10px;padding:11px;font-weight:600;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;opacity:${e.recoLoading?'0.6':'1'};">${e.recoLoading?`<div class="spinner" style="width:16px;height:16px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;"></div>Suche …`:'Empfehlungen laden →'}</button>
+    </div>
+    ${e.recoError ? `<p style="margin-top:10px;font-size:13px;color:#c0392b;background:#fdf2f2;border-radius:8px;padding:8px 12px;">⚠️ ${escHtml(e.recoError)}</p>` : ''}`;
+  } else if (e.step === 5) {
+    const colors = ['var(--primary)','#6366f1','#f59e0b'];
+    const labels = ['Bestes Preis-Leistungs-Verhältnis','Meiste Features','Premium-Option'];
+    body = `<h3 style="font-size:16px;font-weight:700;margin:0 0 6px;">Unsere Empfehlungen</h3>
+    ${e.recoSummary ? `<p style="font-size:13px;color:var(--muted);margin:0 0 14px;">${escHtml(e.recoSummary)}</p>` : ''}
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      ${(e.recommendations||[]).map((r,ri) => `<div style="border:2px solid ${colors[ri]}30;border-radius:14px;overflow:hidden;">
+        <div style="padding:14px;">
+          <span style="display:inline-block;font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;background:${colors[ri]};color:#fff;margin-bottom:8px;">${labels[ri]}</span>
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px;">
+            <div><div style="font-weight:700;font-size:14px;color:var(--text);">${escHtml(r.name)}</div><div style="font-size:12px;color:var(--muted);">${escHtml(r.brand)}</div></div>
+            <div style="text-align:right;flex-shrink:0;"><div style="font-weight:700;font-size:14px;color:${colors[ri]};">${escHtml(r.price_estimate)}</div><div style="font-size:11px;background:#f0fdf4;color:#166534;border-radius:20px;padding:2px 6px;margin-top:2px;">${escHtml(r.energy_class||'–')}</div></div>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px;">${(r.top_features||[]).map(f=>`<span style="font-size:11px;padding:3px 8px;border-radius:20px;border:1px solid var(--border);color:var(--muted);">${escHtml(f)}</span>`).join('')}</div>
+          <button onclick="state.ersetzen.expandedReco=state.ersetzen.expandedReco===${ri}?null:${ri};render()" style="font-size:12px;font-weight:600;color:${colors[ri]};background:none;border:none;cursor:pointer;padding:0;">${e.expandedReco===ri?'▲ Weniger':'▼ Warum diese Empfehlung?'}</button>
+          ${e.expandedReco===ri ? `<p style="font-size:13px;color:var(--muted);margin:8px 0 0;line-height:1.55;">${escHtml(r.why)}</p>` : ''}
+          <div style="display:flex;gap:6px;margin-top:10px;">
+            <a href="https://www.amazon.at/s?k=${encodeURIComponent(r.search_term)}" target="_blank" style="flex:1;text-align:center;font-size:12px;font-weight:600;padding:8px;border-radius:10px;border:2px solid ${colors[ri]};color:${colors[ri]};text-decoration:none;">🛒 Amazon.at</a>
+            <a href="https://www.google.at/search?q=${encodeURIComponent(r.search_term+' kaufen')}" target="_blank" style="flex:1;text-align:center;font-size:12px;font-weight:600;padding:8px;border-radius:10px;border:2px solid var(--border);color:var(--muted);text-decoration:none;">🔍 Google.at</a>
+          </div>
+        </div>
+      </div>`).join('')}
+    </div>
+    <p style="font-size:12px;color:var(--muted);margin:12px 0 0;background:var(--bg);border-radius:8px;padding:10px;">ℹ️ Empfehlungen basieren auf KI-Analyse. Preise können abweichen.</p>
+    <div style="display:flex;gap:8px;margin-top:12px;">
+      <button onclick="closeErsetzenModal();openVerkaufModal('${device.id}')" style="flex:1;border:1.5px solid var(--border);color:var(--text);background:#fff;border-radius:10px;padding:11px;font-weight:600;font-size:14px;cursor:pointer;">🏷️ Verkaufen</button>
+      <button onclick="closeErsetzenModal()" style="flex:1;background:var(--primary);color:#fff;border:none;border-radius:10px;padding:11px;font-weight:600;font-size:14px;cursor:pointer;">Fertig ✓</button>
+    </div>`;
+  }
+  return `<div style="position:fixed;inset:0;z-index:50;display:flex;align-items:flex-end;justify-content:center;background:rgba(0,0,0,0.5);" onclick="if(event.target===this)closeErsetzenModal()">
+    <div style="background:#fff;width:100%;max-width:480px;border-radius:20px 20px 0 0;padding:20px;max-height:95vh;overflow-y:auto;" class="fade-in">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--border);">
+        <span style="font-size:16px;font-weight:700;color:var(--text);">🔄 Gerät ersetzen</span>
+        <button onclick="closeErsetzenModal()" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:20px;line-height:1;">×</button>
+      </div>
+      ${prog}${body}
+    </div>
+  </div>`;
+}
+
+// ─── View: Add ───────────────────────────────────────────────────────────────
+function renderAdd() {
+  const f = state.addForm;
+  const inputCls = 'w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-gray-800 text-sm focus:outline-none focus:ring-2 focus:border-transparent transition';
+  const ring = 'style="--tw-ring-color:#0D9488"';
+
+  const photoSection = f.dataUrl ? `
+    <div class="relative rounded-xl overflow-hidden bg-gray-100 mb-5" style="height:200px;">
+      <img src="${f.dataUrl}" class="w-full h-full object-cover">
+      ${f.scanLoading ? `
+        <div class="absolute inset-0 bg-black/55 flex flex-col items-center justify-center gap-2 text-white">
+          <div class="spinner w-8 h-8 border-[3px] border-white border-t-transparent rounded-full"></div>
+          <span class="text-sm font-medium">Gerät wird erkannt …</span>
+        </div>` : `
+        <button type="button" onclick="clearPhoto()"
+          class="absolute top-2 right-2 bg-black/60 hover:bg-black/80 text-white rounded-full p-1.5 transition">
+          ${icon(ICONS.x, 'w-3.5 h-3.5')}
+        </button>
+        <div class="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/50 to-transparent px-3 py-2">
+          <span class="text-white text-xs font-medium">✓ Foto wird mit Gerät gespeichert</span>
+        </div>`}
+      ${f.scanError ? `
+        <div class="absolute bottom-0 inset-x-0 bg-red-500/90 px-3 py-1.5 text-white text-xs">
+          ⚠️ ${escHtml(f.scanError)}
+        </div>` : ''}
+    </div>` : `
+    <div class="mb-5">
+      <input type="file" id="photo-input" accept="image/*" capture="environment"
+        class="hidden" onchange="handlePhotoSelect(event)">
+      <button type="button" onclick="document.getElementById('photo-input').click()"
+        class="w-full border-2 border-dashed border-gray-200 rounded-xl py-7 flex flex-col items-center gap-1.5 hover:border-teal-400 hover:bg-teal-50/40 transition group">
+        <span class="group-hover:scale-110 transition-transform">${icon(ICONS.camera, 'w-8 h-8 text-gray-300 group-hover:text-teal-400 transition')}</span>
+        <span class="text-sm font-semibold text-gray-500 group-hover:text-teal-600 mt-1">Foto aufnehmen / hochladen</span>
+        <span class="text-xs text-gray-400">KI erkennt Gerät automatisch</span>
+      </button>
+    </div>`;
+
+  return `
+    ${renderHeader('Gerät hinzufügen', true)}
+    <main class="max-w-2xl mx-auto px-4 py-5">
+      <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+        <form onsubmit="handleAddDevice(event)" novalidate>
+          ${photoSection}
+          <div class="space-y-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1.5">Gerätename <span class="text-red-400">*</span></label>
+              <input id="f-name" type="text" required autocomplete="off"
+                value="${escHtml(f.name)}" placeholder="z. B. Geschirrspüler"
+                class="${inputCls}" ${ring}>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1.5">Marke</label>
+              <input id="f-marke" type="text" autocomplete="off"
+                value="${escHtml(f.marke)}" placeholder="z. B. Bosch"
+                class="${inputCls}" ${ring}>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1.5">Modell</label>
+              <input id="f-modell" type="text" autocomplete="off"
+                value="${escHtml(f.modell)}" placeholder="z. B. SMV4HVX31E"
+                class="${inputCls}" ${ring}>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1.5">Raum <span class="text-red-400">*</span></label>
+              <select id="f-room" required class="${inputCls} bg-white" ${ring}>
+                <option value="">Bitte wählen …</option>
+                ${ROOMS.map(r => `<option value="${r.id}" ${f.room === r.id ? 'selected' : ''}>${r.icon} ${r.label}</option>`).join('')}
+              </select>
+            </div>
+          </div>
+          ${f.dataUrl && !f.scanLoading && !f.scanError ? `
+            <div class="mt-4 bg-teal-50 border border-teal-100 rounded-xl px-4 py-3 text-sm text-teal-700 flex items-start gap-2">
+              <span class="shrink-0 mt-0.5">${icon(ICONS.check, 'w-4 h-4')}</span>
+              <span>KI hat Felder vorausgefüllt – bitte prüfen und ggf. korrigieren.</span>
+            </div>` : ''}
+          <div class="mt-5 flex gap-3">
+            <button type="button" onclick="navigate('main')"
+              class="flex-1 border border-gray-200 text-gray-600 py-2.5 rounded-xl font-medium hover:bg-gray-50 transition text-sm">
+              Abbrechen
+            </button>
+            <button type="submit" ${f.scanLoading ? 'disabled' : ''}
+              class="flex-1 btn-primary text-white py-2.5 rounded-xl font-semibold hover:opacity-90 transition text-sm shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
+              Hinzufügen
+            </button>
+          </div>
+        </form>
+      </div>
+    </main>`;
+}
+
+function handleAddDevice(e) {
+  e.preventDefault();
+  if (state.addForm.scanLoading) return;
+  const name   = document.getElementById('f-name').value.trim();
+  const marke  = document.getElementById('f-marke').value.trim();
+  const modell = document.getElementById('f-modell').value.trim();
+  const room   = document.getElementById('f-room').value;
+  if (!name || !room) { showToast('Bitte Name und Raum ausfüllen'); return; }
+  addDevice({ name, marke: marke || '–', modell: modell || '–', room,
+              photo: state.addForm.photo || null, photoMime: state.addForm.mime || null });
+}
+
+// ─── View: Research ───────────────────────────────────────────────────────────
+function renderResearch() {
+  const device = state.devices.find(d => d.id === state.selectedId);
+  if (!device || !state.research) { navigate('main'); return ''; }
+
+  const agents = state.research.agents;
+  const doneCount = agents.filter(a => a.status === 'done').length;
+  const allDone   = doneCount === agents.length;
+  const pct = Math.round((doneCount / agents.length) * 100);
+
+  const agentCards = agents.map(a => {
+    const isRunning = a.status === 'running';
+    const isDone    = a.status === 'done';
+    const isError   = a.status === 'error';
+
+    const statusEl = isRunning
+      ? `<div class="spinner w-5 h-5 border-2 border-t-transparent rounded-full shrink-0" style="border-color:#0D9488; border-top-color:transparent;"></div>`
+      : isDone
+        ? `<div class="w-5 h-5 rounded-full flex items-center justify-center shrink-0" style="background:#0D9488;">
+             <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg>
+           </div>`
+        : `<div class="w-5 h-5 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+             <svg class="w-3 h-3 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3"><path d="M18 6L6 18M6 6l12 12"/></svg>
+           </div>`;
+
+    return `
+      <div class="bg-white rounded-xl border px-4 py-3 flex items-center gap-3 ${isDone ? 'border-teal-100' : isError ? 'border-red-100' : 'border-gray-100'} fade-in">
+        <span class="text-xl shrink-0">${a.icon}</span>
+        <div class="flex-1 min-w-0">
+          <div class="text-sm font-medium text-gray-700 truncate">${a.label}</div>
+          <div class="text-xs mt-0.5 ${isDone ? 'text-teal-500' : isError ? 'text-red-400' : 'text-gray-400 pulse'}">
+            ${isDone ? 'Fertig' : isError ? (a.error || 'Fehler') : 'Wird geladen …'}
+          </div>
+        </div>
+        ${statusEl}
+      </div>`;
+  }).join('');
+
+  return `
+    ${renderHeader('Informationen werden gesammelt', false)}
+    <main class="max-w-2xl mx-auto px-4 py-8">
+
+      <!-- Hero -->
+      <div class="text-center mb-8">
+        <div class="text-5xl mb-3">🔬</div>
+        <h1 class="text-xl font-bold text-gray-800">Wir sammeln Informationen …</h1>
+        <p class="text-sm text-gray-400 mt-1">${escHtml(device.name)} · ${escHtml(device.marke)} ${escHtml(device.modell)}</p>
+      </div>
+
+      <!-- Progress bar -->
+      <div class="mb-6">
+        <div class="flex justify-between text-xs text-gray-400 mb-1.5">
+          <span>${doneCount} von ${agents.length} Agenten abgeschlossen</span>
+          <span>${pct}%</span>
+        </div>
+        <div class="h-2 bg-gray-100 rounded-full overflow-hidden">
+          <div class="h-full rounded-full transition-all duration-500" style="background:#0D9488; width:${pct}%;"></div>
+        </div>
+      </div>
+
+      <!-- Agent cards -->
+      <div class="space-y-2">
+        ${agentCards}
+      </div>
+
+      ${allDone ? `
+        <div class="mt-8 text-center">
+          <button onclick="navigate('detail', '${device.id}')"
+            class="btn-primary text-white px-8 py-3 rounded-xl font-semibold hover:opacity-90 transition shadow-sm">
+            Zum Gerät →
+          </button>
+        </div>` : ''}
+    </main>`;
+}
+
+// ─── View: Detail ─────────────────────────────────────────────────────────────
+function renderManualTab(device) {
+  const content = device.manual;
+
+  const agentStatus = state.research?.deviceId === device.id
+    ? state.research.agents.find(a => a.key === 'manual')
+    : null;
+
+  if (!content) {
+    if (agentStatus?.status === 'running') {
+      return `
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:3rem 0;gap:10px;color:var(--muted);">
+          <div class="spinner" style="width:24px;height:24px;border:2px solid var(--primary-light);border-top-color:transparent;border-radius:50%;"></div>
+          <span style="font-size:14px;" class="pulse">Anleitung wird gesucht …</span>
+        </div>`;
+    }
+    if (agentStatus?.status === 'error') {
+      return `<div style="padding:2.5rem 0;text-align:center;font-size:14px;color:#d9534f;">⚠️ ${escHtml(agentStatus.error || 'Fehler beim Laden')}</div>`;
+    }
+    return `
+      <div style="padding:2rem 0;text-align:center;color:var(--muted);font-size:14px;">
+        <div style="font-size:2rem;margin-bottom:8px;">📭</div>
+        Keine Informationen verfügbar.${!state.apiKey ? `<br><button onclick="navigate('settings')" style="margin-top:8px;color:var(--primary);font-weight:600;background:none;border:none;cursor:pointer;">API-Schlüssel hinzufügen →</button>` : ''}
+      </div>`;
+  }
+
+  // Legacy plain-text content (old data before link-based approach)
+  if (typeof content === 'string') {
+    return `<div style="font-size:14px;color:var(--text);line-height:1.75;white-space:pre-wrap;" class="fade-in">${escHtml(content)}</div>`;
+  }
+
+  // Structured JSON result
+  const m = content;
+
+  if (!m.found) {
+    const googleSearch = `https://www.google.com/search?q=${encodeURIComponent(`${device.marke || ''} ${device.modell || ''} Bedienungsanleitung PDF`.trim())}`;
+    return `
+      <div class="fade-in">
+        <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:12px;padding:14px 16px;margin-bottom:16px;">
+          <p style="font-size:14px;font-weight:600;color:#92400e;margin:0 0 6px;">⚠️ Keine Anleitung gefunden</p>
+          <p style="font-size:13px;color:#b45309;margin:0;">Für <strong>${escHtml(device.marke)} ${escHtml(device.modell)}</strong> konnte keine Anleitung automatisch gefunden werden.</p>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <a href="${googleSearch}" target="_blank" rel="noopener" style="display:flex;align-items:center;justify-content:center;gap:8px;padding:11px;background:var(--primary);color:#fff;border-radius:10px;font-weight:600;font-size:14px;text-decoration:none;">🔍 Manuell suchen</a>
+        </div>
+        <p style="margin-top:16px;font-size:11px;color:var(--muted);text-align:center;">Haushalt-Genie übernimmt keine Gewähr für Vollständigkeit oder Richtigkeit.</p>
+      </div>`;
+  }
+
+  const specs = m.key_specs || {};
+  const specPills = [
+    specs.capacity ? `Kapazität: ${specs.capacity}` : null,
+    specs.energy_class ? `Energieklasse: ${specs.energy_class}` : null,
+    ...(specs.special_features || []),
+  ].filter(Boolean);
+  const programs = m.programs || [];
+  const tips = m.quick_start_tips || [];
+
+  return `
+    <div class="fade-in">
+      <a href="${escHtml(m.manual_url)}" target="_blank" rel="noopener"
+        style="display:flex;align-items:center;justify-content:center;gap:8px;padding:13px;background:var(--primary);color:#fff;border-radius:12px;font-weight:700;font-size:15px;text-decoration:none;margin-bottom:${m.pdf_url ? '10px' : '16px'};">
+        📖 Anleitung öffnen
+      </a>
+      ${m.pdf_url ? `
+      <a href="${escHtml(m.pdf_url)}" target="_blank" rel="noopener"
+        style="display:flex;align-items:center;justify-content:center;gap:8px;padding:10px;border:1.5px solid var(--primary);color:var(--primary);border-radius:12px;font-weight:600;font-size:14px;text-decoration:none;margin-bottom:16px;">
+        ⬇️ PDF direkt herunterladen
+      </a>` : ''}
+
+      ${specPills.length ? `
+      <div style="margin-bottom:16px;">
+        <p style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted);margin:0 0 8px;">Technische Daten</p>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;">
+          ${specPills.map(s => `<span style="font-size:12px;font-weight:600;padding:4px 10px;border-radius:20px;background:rgba(76,175,130,0.12);color:var(--primary);">${escHtml(s)}</span>`).join('')}
+        </div>
+      </div>` : ''}
+
+      ${programs.length ? `
+      <div style="margin-bottom:16px;">
+        <p style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted);margin:0 0 8px;">Programme</p>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;">
+          ${programs.map(p => `<span style="font-size:12px;padding:4px 10px;border-radius:20px;background:var(--border);color:var(--text);">${escHtml(p)}</span>`).join('')}
+        </div>
+      </div>` : ''}
+
+      ${tips.length ? `
+      <div style="margin-bottom:16px;">
+        <p style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted);margin:0 0 8px;">Wichtige Hinweise</p>
+        <ol style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:8px;">
+          ${tips.map(tip => `<li style="font-size:14px;color:var(--text);line-height:1.6;">${escHtml(tip)}</li>`).join('')}
+        </ol>
+      </div>` : ''}
+
+      ${m.pages || m.source ? `<p style="font-size:12px;color:var(--muted);margin:0 0 12px;">${m.pages ? `${m.pages} Seiten · ` : ''}Quelle: ${escHtml(m.source || 'Online')} · Konfidenz: ${escHtml(m.confidence || '')}</p>` : ''}
+
+      <div style="background:#f8f8f6;border-radius:10px;padding:10px 12px;">
+        <p style="font-size:11px;color:var(--muted);margin:0;line-height:1.5;">ℹ️ Diese Anleitung wurde automatisch gefunden. Haushalt-Genie übernimmt keine Gewähr für Vollständigkeit oder Aktualität. Im Zweifelsfall wende dich an den Hersteller.</p>
+      </div>
+    </div>`;
+}
+
+function renderTabContent(device, tabKey) {
+  if (tabKey === 'chat') return renderChatSection(device);
+  if (tabKey === 'manual') return renderManualTab(device);
+
+  const content = device[tabKey];
+  if (content) {
+    return `<div style="font-size:14px;color:var(--text);line-height:1.75;white-space:pre-wrap;" class="fade-in">${escHtml(content)}</div>`;
+  }
+
+  // Check if research is running for this tab
+  const agentStatus = state.research?.deviceId === device.id
+    ? state.research.agents.find(a => a.key === tabKey)
+    : null;
+
+  if (agentStatus?.status === 'running') {
+    return `
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:3rem 0;gap:10px;color:var(--muted);">
+        <div class="spinner" style="width:24px;height:24px;border:2px solid var(--primary-light);border-top-color:transparent;border-radius:50%;"></div>
+        <span style="font-size:14px;" class="pulse">Wird geladen …</span>
+      </div>`;
+  }
+  if (agentStatus?.status === 'error') {
+    return `<div style="padding:2.5rem 0;text-align:center;font-size:14px;color:#d9534f;">⚠️ ${escHtml(agentStatus.error || 'Fehler beim Laden')}</div>`;
+  }
+  return `
+    <div style="padding:2rem 0;text-align:center;color:var(--muted);font-size:14px;">
+      <div style="font-size:2rem;margin-bottom:8px;">📭</div>
+      Keine Informationen verfügbar.${!state.apiKey ? `<br><button onclick="navigate('settings')" style="margin-top:8px;color:var(--primary);font-weight:600;background:none;border:none;cursor:pointer;">API-Schlüssel hinzufügen →</button>` : ''}
+    </div>`;
+}
+
+function renderChatSection(device) {
+  const hasKey = !!state.apiKey;
+  const chat = state.chats[device.id] || [];
+
+  if (!hasKey) {
+    return `<div style="padding:3rem 0;text-align:center;font-size:14px;color:var(--muted);">
+      <div style="font-size:2rem;margin-bottom:8px;">🔑</div>
+      <p style="margin:0 0 12px;">Kein API-Schlüssel hinterlegt.</p>
+      <button onclick="navigate('settings')" style="color:var(--primary);font-weight:600;background:none;border:none;cursor:pointer;">Einstellungen öffnen →</button>
+    </div>`;
+  }
+
+  const bubbles = chat.map(m => {
+    const isUser = m.role === 'user';
+    return `
+      <div style="display:flex;justify-content:${isUser ? 'flex-end' : 'flex-start'};">
+        <div style="max-width:78%;padding:10px 14px;border-radius:${isUser ? '18px 18px 4px 18px' : '18px 18px 18px 4px'};font-size:14px;line-height:1.55;white-space:pre-wrap;${isUser ? 'background:var(--primary);color:#fff;' : 'background:var(--border);color:var(--text);'}">${escHtml(m.content)}</div>
+      </div>`;
+  }).join('');
+
+  const typingDots = state.chatLoading ? `
+    <div style="display:flex;justify-content:flex-start;">
+      <div style="background:var(--border);border-radius:18px 18px 18px 4px;padding:10px 14px;display:flex;gap:4px;align-items:center;">
+        <span class="typing-dot" style="width:6px;height:6px;background:var(--muted);border-radius:50%;display:inline-block;"></span>
+        <span class="typing-dot" style="width:6px;height:6px;background:var(--muted);border-radius:50%;display:inline-block;"></span>
+        <span class="typing-dot" style="width:6px;height:6px;background:var(--muted);border-radius:50%;display:inline-block;"></span>
+      </div>
+    </div>` : '';
+
+  return `
+    <div id="chat-messages" style="overflow-y:auto;display:flex;flex-direction:column;gap:8px;min-height:160px;max-height:380px;">
+      ${chat.length === 0 && !state.chatLoading ? `
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:3rem 0;font-size:14px;color:var(--muted);text-align:center;">
+          <div style="font-size:2rem;margin-bottom:8px;">💬</div>
+          Frag mich alles über dein <strong style="color:var(--text);">${escHtml(device.name)}</strong>
+        </div>` : ''}
+      ${bubbles}
+      ${typingDots}
+    </div>`;
+}
+
+// Map device name keywords → curated Unsplash photo IDs
+const DEVICE_PHOTOS = [
+  { keys:['geschirrspül','dishwasher'],      id:'photo-1585771724684-38269d6639fd' },
+  { keys:['waschmaschine','washing'],        id:'photo-1582735689369-4fe89db7114c' },
+  { keys:['trockner','dryer'],               id:'photo-1626806787461-102c1bfaaea1' },
+  { keys:['kühlschrank','kuehlschrank','fridge','refrigerator'], id:'photo-1584568694244-14fbdf83bd30' },
+  { keys:['herd','backofen','oven','stove'], id:'photo-1556909114-f6e7ad7d3136' },
+  { keys:['kaffeemaschine','coffee'],        id:'photo-1559056199-641a0ac8b55e' },
+  { keys:['mikrowelle','microwave'],         id:'photo-1574269909862-7e1d70bb8078' },
+  { keys:['fernseher','television','tv'],    id:'photo-1593359677879-a4bb92f829d1' },
+  { keys:['staubsauger','vacuum'],           id:'photo-1558618666-fcd25c85cd64' },
+  { keys:['spülmaschine'],                   id:'photo-1585771724684-38269d6639fd' },
+];
+function getDevicePlaceholderImg(name) {
+  const n = (name || '').toLowerCase();
+  const match = DEVICE_PHOTOS.find(d => d.keys.some(k => n.includes(k)));
+  const id = match ? match.id : 'photo-1558618666-fcd25c85cd64';
+  return `https://images.unsplash.com/${id}?auto=format&fit=crop&w=480&h=220&q=80`;
+}
+
+function renderDetail() {
+  const device = state.devices.find(d => d.id === state.selectedId);
+  if (!device) { navigate('main'); return ''; }
+
+  const room = ROOMS.find(r => r.id === device.room) || ROOMS[ROOMS.length - 1];
+  const activeTab = state.detailTab || 'manual';
+
+  // Display labels for tabs
+  const TAB_DISPLAY = {
+    manual:       'Anleitung',
+    faqs:         'FAQs',
+    known_issues: 'Probleme & Lösungen',
+    hacks:        'Tipps',
+    spare_parts:  'Ersatzteile',
+    energy:       'Energiespartipps',
+    chat:         'Chat',
+  };
+
+  const TABS = [
+    ...AGENTS.map(a => ({ key: a.key, label: TAB_DISPLAY[a.key] || a.label })),
+    { key: 'chat', label: 'Chat' },
+  ];
+
+  // Headline: last word in --primary-light
+  const nameParts = (device.name || 'Gerät').trim().split(/\s+/);
+  const lastWord = nameParts.pop();
+  const headline = nameParts.length > 0
+    ? `${escHtml(nameParts.join(' '))} <span style="color:var(--primary-light);">${escHtml(lastWord)}</span>`
+    : `<span style="color:var(--primary-light);">${escHtml(lastWord)}</span>`;
+  const subtext = [device.marke, device.modell].filter(Boolean).join(' · ');
+
+  // SVGs
+  const backSvg     = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15,18 9,12 15,6"/></svg>`;
+  const shareSvg    = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>`;
+  const settingsSvg = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>`;
+  const trashSvg    = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>`;
+  const clipSvg     = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>`;
+  const sendSvg     = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`;
+
+  const tabBar = `
+    <div style="display:flex;flex-wrap:wrap;background:#fff;border-bottom:1px solid var(--border);padding:0 4px;">
+      ${TABS.map(t => {
+        const isActive = t.key === activeTab;
+        const agentInfo = state.research?.deviceId === device.id
+          ? state.research.agents.find(a => a.key === t.key)
+          : null;
+        const badge = agentInfo?.status === 'running'
+          ? `<span class="pulse" style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--primary-light);margin-left:4px;vertical-align:middle;"></span>`
+          : '';
+        return `
+          <button onclick="setTab('${t.key}')"
+            style="padding:10px 14px;font-size:13px;font-weight:${isActive?'600':'500'};border:none;background:none;cursor:pointer;white-space:nowrap;border-bottom:2px solid ${isActive?'var(--primary)':'transparent'};color:${isActive?'var(--primary)':'var(--muted)'};transition:color .15s,border-color .15s;">
+            ${t.label}${badge}
+          </button>`;
+      }).join('')}
+    </div>`;
+
+  const tabContent = renderTabContent(device, activeTab);
+  const isChat = activeTab === 'chat';
+
+  return `
+    <header style="background:#fff;border-bottom:1px solid var(--border);position:sticky;top:0;z-index:10;">
+      <div style="max-width:480px;margin:0 auto;padding:0.875rem 1rem;display:flex;align-items:center;gap:8px;">
+        <button onclick="navigate('main')" style="background:none;border:none;cursor:pointer;color:var(--text);padding:4px;display:flex;align-items:center;flex-shrink:0;">${backSvg}</button>
+        <h1 style="flex:1;font-size:15px;font-weight:700;color:var(--text);text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(device.name)}</h1>
+        <div style="display:flex;gap:2px;flex-shrink:0;">
+          <button style="background:none;border:none;cursor:pointer;color:var(--muted);padding:4px;display:flex;align-items:center;">${shareSvg}</button>
+          <button onclick="navigate('settings')" style="background:none;border:none;cursor:pointer;color:var(--muted);padding:4px;display:flex;align-items:center;">${settingsSvg}</button>
+        </div>
+      </div>
+    </header>
+
+    <div style="max-width:480px;margin:0 auto;padding-bottom:90px;">
+
+      <!-- Hero image -->
+      <div style="position:relative;width:100%;height:220px;background:#F0F0EB;overflow:hidden;">
+        ${device.photo
+          ? `<img src="data:${device.photoMime};base64,${device.photo}" style="width:100%;height:100%;object-fit:cover;">`
+          : `<img src="${getDevicePlaceholderImg(device.name)}" style="width:100%;height:100%;object-fit:cover;" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div style="width:100%;height:100%;display:none;align-items:center;justify-content:center;font-size:5rem;">${room.icon}</div>`}
+        ${device.modell ? `
+          <div style="position:absolute;bottom:12px;right:12px;background:rgba(255,255,255,0.93);border-radius:8px;padding:5px 10px;backdrop-filter:blur(4px);">
+            <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);font-weight:600;">MODELL-ID</div>
+            <div style="font-size:13px;font-weight:700;color:var(--primary-light);">${escHtml(device.modell)}</div>
+          </div>` : ''}
+      </div>
+
+      <!-- Headline block -->
+      <div style="padding:1.25rem 1.25rem 0.75rem;">
+        <h2 style="font-size:28px;font-weight:800;line-height:1.2;color:var(--text);margin:0 0 6px;">${headline}</h2>
+        ${subtext ? `<p style="font-size:14px;color:var(--muted);margin:0 0 14px;">${escHtml(subtext)}</p>` : ''}
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+          <div style="display:flex;gap:8px;">
+            <button onclick="openVerkaufModal('${device.id}')" style="display:inline-flex;align-items:center;gap:5px;font-size:13px;font-weight:600;color:var(--primary);background:rgba(27,94,69,0.08);border:none;border-radius:8px;padding:7px 14px;cursor:pointer;">🏷️ Verkaufen</button>
+            <button onclick="openErsetzenModal('${device.id}')" style="display:inline-flex;align-items:center;gap:5px;font-size:13px;font-weight:600;color:var(--primary);background:rgba(27,94,69,0.08);border:none;border-radius:8px;padding:7px 14px;cursor:pointer;">🔄 Ersetzen</button>
+          </div>
+          <button onclick="confirmDelete('${device.id}')" style="display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#c0392b;background:none;border:1px solid #f5c6c5;border-radius:8px;padding:6px 10px;cursor:pointer;font-weight:500;white-space:nowrap;">${trashSvg} Löschen</button>
+        </div>
+      </div>
+
+      <!-- Tab bar + content card -->
+      <div style="background:#fff;border-radius:12px;margin:0 1rem;box-shadow:0 1px 4px rgba(0,0,0,0.06);overflow:hidden;">
+        ${tabBar}
+        <div style="padding:${isChat ? '1rem' : '1.25rem'};">
+          ${tabContent}
+        </div>
+      </div>
+    </div>
+
+    <!-- Fixed chat bar — always visible on detail page -->
+    <div style="position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid var(--border);padding:10px 16px;z-index:20;">
+      <div style="max-width:480px;margin:0 auto;display:flex;align-items:center;gap:8px;background:var(--bg);border-radius:24px;padding:8px 8px 8px 14px;">
+        <span style="color:var(--muted);display:flex;align-items:center;flex-shrink:0;">${clipSvg}</span>
+        <input id="chat-input" type="text" autocomplete="off"
+          placeholder="Frage zu diesem Gerät stellen…"
+          ${state.chatLoading ? 'disabled' : ''}
+          onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();state.detailTab='chat';handleSend();}"
+          style="flex:1;background:none;border:none;outline:none;font-size:14px;color:var(--text);min-width:0;">
+        <button onclick="state.detailTab='chat';handleSend();" ${state.chatLoading ? 'disabled' : ''}
+          style="width:34px;height:34px;border-radius:50%;background:var(--primary);color:white;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;opacity:${state.chatLoading?'0.5':'1'};">
+          ${sendSvg}
+        </button>
+      </div>
+    </div>
+    ${renderVerkaufModal(device)}
+    ${renderErsetzenModal(device)}`;
+}
+
+// ─── View: Settings ──────────────────────────────────────────────────────────
+function renderSettings() {
+  return `
+    ${renderHeader('Einstellungen', true)}
+    <main class="max-w-2xl mx-auto px-4 py-5 space-y-4">
+
+      <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+        <div class="flex items-center gap-2 mb-1">
+          <span class="text-base">🔑</span>
+          <h2 class="font-semibold text-gray-800">Anthropic API-Schlüssel</h2>
+        </div>
+        <p class="text-sm text-gray-400 mb-4 ml-7">Wird nur lokal gespeichert und direkt an die Anthropic API gesendet.</p>
+        <input id="s-apikey" type="password" value="${escHtml(state.apiKey)}" placeholder="sk-ant-…"
+          class="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm font-mono text-gray-800 focus:outline-none focus:ring-2 focus:border-transparent transition"
+          style="--tw-ring-color:#0D9488">
+        ${state.apiKey ? `
+          <div class="mt-2 text-xs font-medium flex items-center gap-1" style="color:#0D9488;">
+            ${icon(ICONS.check, 'w-3.5 h-3.5')} Schlüssel gespeichert
+          </div>` : ''}
+        <button onclick="saveApiKey()"
+          class="mt-4 w-full btn-primary text-white py-2.5 rounded-xl font-semibold hover:opacity-90 transition text-sm shadow-sm">
+          Speichern
+        </button>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+        <h2 class="font-semibold text-gray-800 mb-3">Übersicht</h2>
+        <div class="grid grid-cols-3 gap-3">
+          <div class="bg-gray-50 rounded-xl p-4 text-center">
+            <div class="text-2xl font-bold text-gray-800">${state.devices.length}</div>
+            <div class="text-xs text-gray-500 mt-0.5">Geräte</div>
+          </div>
+          <div class="bg-gray-50 rounded-xl p-4 text-center">
+            <div class="text-2xl font-bold text-gray-800">${state.devices.filter(d => d.photo).length}</div>
+            <div class="text-xs text-gray-500 mt-0.5">Mit Foto</div>
+          </div>
+          <div class="bg-gray-50 rounded-xl p-4 text-center">
+            <div class="text-2xl font-bold text-gray-800">${Object.values(state.chats).reduce((s,c) => s + c.length, 0)}</div>
+            <div class="text-xs text-gray-500 mt-0.5">Nachrichten</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow-sm border border-red-100 p-6">
+        <h2 class="font-semibold text-gray-800 mb-1">Gefahrenzone</h2>
+        <p class="text-sm text-gray-400 mb-4">Alle Geräte, Fotos, Chats und Einstellungen werden unwiderruflich gelöscht.</p>
+        <button onclick="resetAll()"
+          class="w-full border border-red-200 text-red-500 py-2.5 rounded-xl font-medium hover:bg-red-50 transition text-sm">
+          Alle Daten löschen
+        </button>
+      </div>
+    </main>`;
+}
+
+// ─── Utils ───────────────────────────────────────────────────────────────────
+function escHtml(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+// ─── Render ───────────────────────────────────────────────────────────────────
+function render() {
+  const app = document.getElementById('app');
+  switch (state.view) {
+    case 'main':     app.innerHTML = renderMain();     break;
+    case 'add':      app.innerHTML = renderAdd();      break;
+    case 'research': app.innerHTML = renderResearch(); break;
+    case 'detail':   app.innerHTML = renderDetail();   break;
+    case 'settings': app.innerHTML = renderSettings(); break;
+    default:         app.innerHTML = renderMain();
+  }
+  if (state.view === 'detail' && state.detailTab === 'chat') scrollChat();
+}
+
+// Boot
+render();
+</script>
+</body>
+</html>
