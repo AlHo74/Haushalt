@@ -23,6 +23,80 @@ const DEVICE_PHOTOS = [
   { keys:['spülmaschine'],                                               id:'photo-1585771724684-38269d6639fd' },
 ];
 
+// ─── Typenschild positions (verified from repair service sources) ─────────────
+const TYPENSCHILD_POSITIONEN = {
+  'Waschmaschine': {
+    primary: 'Öffne die Gerätetür (Bullauge). Das Typenschild befindet sich am Türrahmen innen oder auf dem Gehäuse rund um die Einfüllöffnung.',
+    secondary: 'Falls dort nichts zu finden: hinter der Flusensiebklappe unten vorne am Sockel oder auf der Rückseite.',
+    tip: 'Bei Siemens/Bosch oft auf der Innenseite des Bullauges selbst.'
+  },
+  'Wäschetrockner': {
+    primary: 'Öffne die Gerätetür. Das Typenschild befindet sich am inneren Türrahmen oder auf dem Gehäuse rund um die Einfüllöffnung.',
+    secondary: 'Falls dort nichts zu finden: an der Rückseite des Geräts oder hinter dem Flusensieb.',
+    tip: 'Bei Siemens/Bosch oft auf der Innenseite der Tür selbst (wie unser Testgerät WT47XE40).'
+  },
+  'Geschirrspüler': {
+    primary: 'Öffne die Gerätetür vollständig. Das Typenschild befindet sich am Rand der Türinnenseite oder links oben in der Türkante.',
+    secondary: 'Manchmal eingeprägt oder gelasert — mit Licht beleuchten. Alternativ an der Rückseite.',
+    tip: 'Oft schwer zu lesen da eingraviert — Taschenlampe oder Handy-Licht hilft.'
+  },
+  'Kühlschrank': {
+    primary: 'Das Typenschild befindet sich im Innenraum an der linken Seitenwand, im Bereich der Gemüseschublade.',
+    secondary: 'Gemüse- oder BioFresh-Schublade herausziehen. Alternativ an der Rückseite des Geräts.',
+    tip: 'Bei Samsung oft rechts innen oben. Bei Liebherr/Miele links unten innen.'
+  },
+  'Gefrierschrank': {
+    primary: 'Im Innenraum an der linken Seitenwand. Schubfächer ganz herausziehen — es kann in unterschiedlicher Höhe angebracht sein.',
+    secondary: 'Alternativ an der Rückseite oder Außenseite unten.',
+    tip: 'Schubfächer vollständig entnehmen für beste Sicht.'
+  },
+  'Gefriertruhe': {
+    primary: 'An der rechten Außenseite des Geräts.',
+    secondary: 'Alternativ innen am Deckel oder auf der Rückseite.',
+    tip: 'Meist gut sichtbar außen — kein Öffnen nötig.'
+  },
+  'Herd/Backofen': {
+    primary: 'Öffne die Backofentür. Das Typenschild befindet sich unter der oberen Bedienblende oder im Türrahmen innen.',
+    secondary: 'Manchmal in der Schublade unter der Backofentür oder an den Seitenwänden außen.',
+    tip: 'Tür weit öffnen und Taschenlampe in den Rahmen halten.'
+  },
+  'Kochfeld': {
+    primary: 'Das Typenschild ist oft nur nach dem Ausbau zugänglich. Suche zuerst in den Geräteunterlagen nach einem beigelegten Aufkleber.',
+    secondary: 'Manchmal an der Unterseite des Kochfelds.',
+    tip: 'Oft liegt ein separater Aufkleber mit den Daten in der Originalverpackung oder Anleitung.'
+  },
+  'Mikrowelle': {
+    primary: 'An der Rückseite des Geräts oder an der Seitenwand innen im Garraum.',
+    secondary: 'Manchmal unter dem Gerät.',
+    tip: 'Gerät vorsichtig von der Wand ziehen für Zugang zur Rückseite.'
+  },
+  'Kaffeemaschine': {
+    primary: 'Unter dem Gerät (Unterseite) oder an der Rückseite.',
+    secondary: 'Bei Vollautomaten manchmal hinter der Wartungsklappe oder im Wassertankschacht.',
+    tip: 'Gerät anheben und Unterseite fotografieren — meist am einfachsten.'
+  },
+  'Dunstabzugshaube': {
+    primary: 'Fettfilter entfernen. Das Typenschild befindet sich im Schacht hinter den Fettfiltern.',
+    secondary: 'Manchmal oben auf der Haube außen.',
+    tip: 'Beide Fettfilter ausklappen oder herausziehen für freien Blick in den Schacht.'
+  },
+  'Klimaanlage': {
+    primary: 'An der Seite oder Rückseite des Innengeräts.',
+    secondary: 'Manchmal unter der Frontblende des Innengeräts.',
+    tip: 'Frontblende des Innengeräts leicht anheben.'
+  },
+  'Staubsauger': {
+    primary: 'Unter dem Gerät (Unterseite) oder an der Rückseite.',
+    secondary: 'Bei Stabstaubsaugern auf der Rückseite des Griffs.',
+    tip: 'Gerät umdrehen — meist gut sichtbar auf der Unterseite.'
+  },
+  'Sonstiges': {
+    primary: 'Das Typenschild befindet sich meist an der Rückseite, Unterseite oder innen am Gerät.',
+    secondary: 'Suche nach einem Aufkleber mit Modell- und Seriennummer.',
+    tip: 'Mit Taschenlampe alle Seiten absuchen.'
+  },
+};
+
 // ─── Shared state (loaded once from localStorage per page) ───────────────────
 const state = {
   devices: JSON.parse(localStorage.getItem('hg_devices') || '[]'),

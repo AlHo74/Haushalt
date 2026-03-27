@@ -14,19 +14,41 @@
 <script src="js/app.js"></script>
 <script>
 // ─── Page state ───────────────────────────────────────────────────────────────
-const editId = getUrlParam('edit');   // null = add mode, id = edit mode
+const editId     = getUrlParam('edit');
 const editDevice = editId ? getDevice(editId) : null;
 
 let form = {
-  name:        editDevice?.name   || '',
-  marke:       editDevice?.marke  || '',
-  modell:      editDevice?.modell || '',
-  room:        editDevice?.room   || '',
-  dataUrl:     null,
-  photo:       editDevice?.photo  || null,
-  mime:        editDevice?.photoMime || null,
-  scanLoading: false,
-  scanError:   null,
+  name:                editDevice?.name        || '',
+  marke:               editDevice?.marke       || '',
+  modell:              editDevice?.modell       || '',
+  room:                editDevice?.room         || '',
+  dataUrl:             null,
+  photo:               editDevice?.photo        || null,
+  mime:                editDevice?.photoMime    || null,
+  scanLoading:         false,
+  scanError:           null,
+  recognitionConfidence: null,   // 'high'|'medium'|'low'
+  showTSBanner:        false,    // yellow banner after low-confidence scan
+};
+
+// Typenschild wizard state
+let tsWizard = null;
+// { step:1-4, kategorie:string, tsDataUrl:null, tsPhoto:null, tsMime:null, tsResult:null, tsLoading:false, tsError:null }
+
+// ─── TS categories ────────────────────────────────────────────────────────────
+const TS_CATEGORIES = [
+  'Waschmaschine','Wäschetrockner','Geschirrspüler','Kühlschrank',
+  'Gefrierschrank','Gefriertruhe','Herd/Backofen','Kochfeld',
+  'Mikrowelle','Kaffeemaschine','Dunstabzugshaube','Klimaanlage',
+  'Staubsauger','Sonstiges',
+];
+
+const TS_ICONS = {
+  'Waschmaschine':'🫧','Wäschetrockner':'🌀','Geschirrspüler':'🍽️',
+  'Kühlschrank':'🧊','Gefrierschrank':'❄️','Gefriertruhe':'📦',
+  'Herd/Backofen':'🔥','Kochfeld':'⭕','Mikrowelle':'📡',
+  'Kaffeemaschine':'☕','Dunstabzugshaube':'💨','Klimaanlage':'🌡️',
+  'Staubsauger':'🌪️','Sonstiges':'🔌',
 };
 
 // ─── SVGs ─────────────────────────────────────────────────────────────────────
@@ -37,18 +59,20 @@ const SVG = {
   pencil:  `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>`,
   chevron: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9,18 15,12 9,6"/></svg>`,
   save:    `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>`,
+  search:  `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>`,
+  close:   `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`,
 };
 
 const INP = `style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:12px 14px;font-size:14px;color:var(--text);outline:none;box-sizing:border-box;background:#fff;"`;
 const LBL = `style="font-size:10px;font-weight:700;letter-spacing:0.1em;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:6px;"`;
 
-// ─── Render ───────────────────────────────────────────────────────────────────
+// ─── Main page render ─────────────────────────────────────────────────────────
 function renderPage() {
   document.getElementById('app').innerHTML = buildHtml();
 }
 
 function buildHtml() {
-  const title = editDevice ? 'Gerät bearbeiten' : 'Neues Gerät\nhinzufügen';
+  const title    = editDevice ? 'Gerät bearbeiten' : 'Neues Gerät\nhinzufügen';
   const subtitle = editDevice
     ? `${escHtml(editDevice.name)} – Details anpassen`
     : 'Foto aufnehmen, scannen oder manuell eingeben.';
@@ -68,11 +92,31 @@ function buildHtml() {
       ${form.scanError ? `<div style="position:absolute;bottom:0;left:0;right:0;background:rgba(220,38,38,.9);padding:5px 10px;font-size:12px;color:#fff;">⚠️ ${escHtml(form.scanError)}</div>` : ''}
     </div>` : '';
 
-  const aiHint = form.dataUrl && !form.scanLoading && !form.scanError ? `
-    <div style="background:rgba(13,148,136,0.08);border-radius:10px;padding:10px 12px;margin-bottom:14px;display:flex;align-items:center;gap:8px;">
-      <span style="font-size:16px;">✓</span>
-      <span style="font-size:13px;color:var(--primary);font-weight:500;">KI hat Felder vorausgefüllt – bitte prüfen.</span>
-    </div>` : '';
+  // AI hint OR low-confidence TS banner
+  let hintHtml = '';
+  if (form.dataUrl && !form.scanLoading && !form.scanError) {
+    if (form.showTSBanner) {
+      hintHtml = `
+        <div style="background:#fffbeb;border:1.5px solid #fcd34d;border-radius:10px;padding:12px 14px;margin-bottom:14px;">
+          <div style="font-size:13px;font-weight:600;color:#92400e;margin-bottom:6px;">
+            ⚠️ Modell nicht eindeutig erkannt
+          </div>
+          <div style="font-size:12px;color:#92400e;margin-bottom:10px;">
+            Fotografiere das Typenschild für eine genaue Identifikation.
+          </div>
+          <button onclick="openTSWizard()"
+            style="background:#f59e0b;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer;">
+            Typenschild finden →
+          </button>
+        </div>`;
+    } else {
+      hintHtml = `
+        <div style="background:rgba(13,148,136,0.08);border-radius:10px;padding:10px 12px;margin-bottom:14px;display:flex;align-items:center;gap:8px;">
+          <span style="font-size:16px;">✓</span>
+          <span style="font-size:13px;color:var(--primary);font-weight:500;">KI hat Felder vorausgefüllt – bitte prüfen.</span>
+        </div>`;
+    }
+  }
 
   return `
     <!-- Header -->
@@ -96,8 +140,6 @@ function buildHtml() {
       ${!editDevice ? `
       <!-- Input method cards -->
       <div style="padding:0 1.25rem;margin-bottom:14px;">
-
-        <!-- Photo card — full width -->
         <input type="file" id="photo-input" accept="image/*" capture="environment" style="display:none;" onchange="handlePhotoSelect(event)">
         <button onclick="document.getElementById('photo-input').click()"
           style="width:100%;background:#fff;border:none;border-radius:14px;padding:1rem 1.25rem;display:flex;align-items:center;gap:14px;margin-bottom:10px;cursor:pointer;text-align:left;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
@@ -110,8 +152,6 @@ function buildHtml() {
           </div>
           ${SVG.chevron}
         </button>
-
-        <!-- Barcode + Manual row -->
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
           <button onclick="openBarcodeScanner()"
             style="background:#fff;border:none;border-radius:14px;padding:1rem;cursor:pointer;text-align:left;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
@@ -143,7 +183,7 @@ function buildHtml() {
             </div>
 
             ${photoStrip}
-            ${aiHint}
+            ${hintHtml}
 
             <!-- Gerätename -->
             <div style="margin-bottom:14px;">
@@ -153,7 +193,7 @@ function buildHtml() {
             </div>
 
             <!-- Marke + Modell -->
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:6px;">
               <div>
                 <label ${LBL}>Marke</label>
                 <input id="f-marke" type="text" autocomplete="off"
@@ -166,6 +206,12 @@ function buildHtml() {
               </div>
             </div>
 
+            <!-- Typenschild-Finder button (always available) -->
+            <button type="button" onclick="openTSWizard()"
+              style="display:flex;align-items:center;gap:6px;background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;padding:4px 0;margin-bottom:14px;">
+              ${SVG.search} 🔍 Typenschild scannen
+            </button>
+
             <!-- Raum -->
             <div>
               <label ${LBL}>Raum *</label>
@@ -176,12 +222,9 @@ function buildHtml() {
               </select>
             </div>
           </div>
-
-          <!-- Hidden submit -->
           <button type="submit" id="add-submit-btn" style="display:none;"></button>
         </form>
       </div>
-
     </main>
 
     <!-- Fixed bottom save button -->
@@ -201,17 +244,16 @@ async function handlePhotoSelect(e) {
   if (!file) return;
   e.target.value = '';
 
-  // Capture current field values (user may have typed before picking photo)
   const cur = {
-    name:  document.getElementById('f-name')?.value  || form.name,
-    marke: document.getElementById('f-marke')?.value || form.marke,
-    modell:document.getElementById('f-modell')?.value|| form.modell,
-    room:  document.getElementById('f-room')?.value  || form.room,
+    name:  document.getElementById('f-name')?.value   || form.name,
+    marke: document.getElementById('f-marke')?.value  || form.marke,
+    modell:document.getElementById('f-modell')?.value || form.modell,
+    room:  document.getElementById('f-room')?.value   || form.room,
   };
 
   try {
     const { dataUrl, base64, mime } = await resizeImage(file);
-    form = { ...form, ...cur, dataUrl, photo: base64, mime, scanLoading: true, scanError: null };
+    form = { ...form, ...cur, dataUrl, photo: base64, mime, scanLoading: true, scanError: null, showTSBanner: false };
     renderPage();
 
     if (!state.apiKey) {
@@ -221,18 +263,30 @@ async function handlePhotoSelect(e) {
     }
 
     const result = await analyzePhoto(base64, mime);
-    const room = result.room_suggestion ? (roomSuggestionToId(result.room_suggestion) || cur.room) : cur.room;
+    const room   = result.room_suggestion ? (roomSuggestionToId(result.room_suggestion) || cur.room) : cur.room;
+    const modelMissing    = !result.model || result.model.toLowerCase().includes('unbekannt');
+    const lowConfidence   = result.confidence === 'low';
+    const shouldShowBanner = modelMissing || lowConfidence;
+
     form = {
       ...form,
-      name:  result.name  || cur.name,
-      marke: result.brand || cur.marke,
-      modell:result.model || cur.modell,
+      name:   result.name  || cur.name,
+      marke:  result.brand || cur.marke,
+      modell: result.model || cur.modell,
       room,
       scanLoading: false,
-      scanError: null,
+      scanError:   null,
+      recognitionConfidence: result.confidence,
+      showTSBanner: shouldShowBanner,
     };
     renderPage();
-    showToast('Gerät erkannt ✓');
+
+    if (!shouldShowBanner) {
+      showToast('Gerät erkannt ✓');
+    } else {
+      // Auto-open TS wizard after 1.5s if model not found
+      setTimeout(() => openTSWizard(), 1500);
+    }
   } catch (err) {
     form = { ...form, scanLoading: false, scanError: err.message };
     renderPage();
@@ -242,13 +296,13 @@ async function handlePhotoSelect(e) {
 async function analyzePhoto(base64, mime) {
   const data = await callAnthropic({
     model: 'claude-sonnet-4-20250514',
-    max_tokens: 256,
+    max_tokens: 300,
     messages: [{ role: 'user', content: [
       { type: 'image', source: { type: 'base64', media_type: mime, data: base64 } },
-      { type: 'text',  text: 'Identify this household device. Return ONLY a JSON object: { "name": "...", "brand": "...", "model": "...", "room_suggestion": "Küche|Badezimmer|Wohnzimmer|Schlafzimmer|Keller|Garage|Sonstiges" }. Use null for unknown fields.' },
+      { type: 'text',  text: 'Identify this household device. Return ONLY a JSON object: { "name": "...", "brand": "...", "model": "...", "confidence": "high|medium|low", "room_suggestion": "Küche|Badezimmer|Wohnzimmer|Schlafzimmer|Keller|Garage|Sonstiges" }. Use null for unknown fields. confidence=high if you clearly recognize brand AND model number, medium if brand only, low if uncertain.' },
     ]}],
   });
-  const text = data.content[0].text;
+  const text  = data.content[0].text;
   const match = text.match(/\{[\s\S]*\}/);
   if (!match) throw new Error('Konnte Gerät nicht identifizieren.');
   return JSON.parse(match[0]);
@@ -256,20 +310,442 @@ async function analyzePhoto(base64, mime) {
 
 function clearPhoto() {
   const cur = {
-    name:  document.getElementById('f-name')?.value  || form.name,
-    marke: document.getElementById('f-marke')?.value || form.marke,
-    modell:document.getElementById('f-modell')?.value|| form.modell,
-    room:  document.getElementById('f-room')?.value  || form.room,
+    name:  document.getElementById('f-name')?.value   || form.name,
+    marke: document.getElementById('f-marke')?.value  || form.marke,
+    modell:document.getElementById('f-modell')?.value || form.modell,
+    room:  document.getElementById('f-room')?.value   || form.room,
   };
   form = { name: cur.name, marke: cur.marke, modell: cur.modell, room: cur.room,
-           dataUrl: null, photo: null, mime: null, scanLoading: false, scanError: null };
+           dataUrl: null, photo: null, mime: null, scanLoading: false, scanError: null,
+           recognitionConfidence: null, showTSBanner: false };
   renderPage();
 }
 
 // ─── Barcode scanner (stub) ───────────────────────────────────────────────────
-function openBarcodeScanner() {
-  showToast('Barcode-Scanner kommt bald ✨');
+function openBarcodeScanner() { showToast('Barcode-Scanner kommt bald ✨'); }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TYPENSCHILD-FINDER WIZARD
+// ─────────────────────────────────────────────────────────────────────────────
+
+function detectCategory(name) {
+  const n = (name || '').toLowerCase();
+  if (n.includes('waschmaschine') || n.includes('wasch'))                             return 'Waschmaschine';
+  if (n.includes('trockner') || n.includes('wäschetrockner'))                        return 'Wäschetrockner';
+  if (n.includes('geschirrspüler') || n.includes('spülmaschine'))                    return 'Geschirrspüler';
+  if (n.includes('gefriertruhe') || n.includes('truhe'))                             return 'Gefriertruhe';
+  if (n.includes('gefrierschrank') || n.includes('gefriergerät'))                    return 'Gefrierschrank';
+  if (n.includes('kühlschrank') || n.includes('kühl'))                               return 'Kühlschrank';
+  if (n.includes('kochfeld') || n.includes('induktion') || n.includes('ceran'))      return 'Kochfeld';
+  if (n.includes('herd') || n.includes('backofen') || n.includes('ofen'))            return 'Herd/Backofen';
+  if (n.includes('mikrowelle'))                                                       return 'Mikrowelle';
+  if (n.includes('kaffee') || n.includes('vollautomat') || n.includes('espresso'))   return 'Kaffeemaschine';
+  if (n.includes('dunstabzug') || n.includes('abzugshaube') || n.includes('haube'))  return 'Dunstabzugshaube';
+  if (n.includes('klima'))                                                            return 'Klimaanlage';
+  if (n.includes('staubsauger') || n.includes('sauger'))                             return 'Staubsauger';
+  return 'Sonstiges';
 }
+
+function openTSWizard() {
+  // Sync current field values before opening
+  const curName = document.getElementById('f-name')?.value || form.name;
+  tsWizard = {
+    step:      1,
+    kategorie: detectCategory(curName),
+    tsDataUrl: null, tsPhoto: null, tsMime: null,
+    tsResult:  null, tsLoading: false, tsError: null,
+  };
+  renderTSOverlay();
+}
+
+function closeTSWizard() {
+  tsWizard = null;
+  document.getElementById('ts-overlay')?.remove();
+}
+
+function renderTSOverlay() {
+  let el = document.getElementById('ts-overlay');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'ts-overlay';
+    el.style.cssText = 'position:fixed;inset:0;background:var(--bg);z-index:200;overflow-y:auto;-webkit-overflow-scrolling:touch;';
+    document.body.appendChild(el);
+  }
+  el.innerHTML = buildTSHtml();
+}
+
+function buildTSHtml() {
+  const step = tsWizard.step;
+
+  const header = `
+    <div style="background:#fff;padding:1rem 1.25rem;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10;border-bottom:1px solid var(--border);">
+      ${step > 1
+        ? `<button onclick="tsBack()" style="background:none;border:none;cursor:pointer;color:var(--text);display:flex;align-items:center;gap:6px;padding:0;">${SVG.back}<span style="font-size:15px;font-weight:600;">Zurück</span></button>`
+        : `<div style="width:60px;"></div>`}
+      <div>
+        <div style="font-size:13px;font-weight:700;color:var(--text);text-align:center;">Typenschild-Finder</div>
+        <div style="font-size:11px;color:var(--muted);text-align:center;">Schritt ${step} von 4</div>
+      </div>
+      <button onclick="closeTSWizard()" style="background:none;border:none;cursor:pointer;color:var(--muted);padding:4px;">${SVG.close}</button>
+    </div>
+
+    <!-- Step dots -->
+    <div style="display:flex;justify-content:center;gap:6px;padding:14px 0 0;">
+      ${[1,2,3,4].map(s => `<div style="width:${s===step?24:8}px;height:8px;border-radius:4px;background:${s===step?'var(--primary)':s<step?'var(--primary-light)':'#E8E8E4'};transition:all .3s;"></div>`).join('')}
+    </div>`;
+
+  const body = step === 1 ? buildTSStep1()
+             : step === 2 ? buildTSStep2()
+             : step === 3 ? buildTSStep3()
+             :              buildTSStep4();
+
+  return header + `<div style="padding:1.25rem;max-width:480px;margin:0 auto;">${body}</div>`;
+}
+
+// ── Step 1: Kategorie bestätigen ──────────────────────────────────────────────
+function buildTSStep1() {
+  const kat = tsWizard.kategorie;
+  return `
+    <div style="text-align:center;padding:1rem 0 1.5rem;">
+      <div style="font-size:48px;margin-bottom:10px;">${TS_ICONS[kat] || '🔌'}</div>
+      <div style="font-size:20px;font-weight:800;color:var(--text);margin-bottom:6px;">Kategorie bestätigen</div>
+      <div style="font-size:13px;color:var(--muted);">Haben wir dein Gerät richtig erkannt?</div>
+    </div>
+
+    <div style="background:#fff;border-radius:14px;padding:1.25rem;box-shadow:0 1px 3px rgba(0,0,0,0.06);margin-bottom:16px;">
+      <label style="font-size:10px;font-weight:700;letter-spacing:0.1em;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:8px;">Gerätekategorie</label>
+      <select id="ts-kategorie" onchange="tsWizard.kategorie=this.value;renderTSOverlay();"
+        style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:12px 14px;font-size:15px;font-weight:600;color:var(--text);outline:none;box-sizing:border-box;background:#fff;appearance:none;-webkit-appearance:none;background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6,9 12,15 18,9'/%3E%3C/svg%3E\");background-repeat:no-repeat;background-position:right 14px center;">
+        ${TS_CATEGORIES.map(c => `<option value="${c}" ${c===kat?'selected':''}>${TS_ICONS[c]} ${c}</option>`).join('')}
+      </select>
+    </div>
+
+    <button onclick="tsWizard.step=2;renderTSOverlay();"
+      style="width:100%;background:var(--primary);color:#fff;border:none;border-radius:14px;padding:16px;font-size:16px;font-weight:700;cursor:pointer;">
+      Weiter → Typenschild finden
+    </button>`;
+}
+
+// ── Step 2: Position anzeigen ─────────────────────────────────────────────────
+function buildTSStep2() {
+  const kat  = tsWizard.kategorie;
+  const pos  = TYPENSCHILD_POSITIONEN[kat] || TYPENSCHILD_POSITIONEN['Sonstiges'];
+  const icon = TS_ICONS[kat] || '🔌';
+
+  return `
+    <div style="text-align:center;padding:0.5rem 0 1.25rem;">
+      <div style="font-size:36px;margin-bottom:8px;">${icon}</div>
+      <div style="font-size:20px;font-weight:800;color:var(--text);margin-bottom:4px;">Wo ist das Typenschild?</div>
+      <div style="font-size:13px;color:var(--muted);">${escHtml(kat)}</div>
+    </div>
+
+    <!-- Diagram -->
+    <div style="background:#fff;border-radius:14px;padding:1.25rem;box-shadow:0 1px 3px rgba(0,0,0,0.06);margin-bottom:14px;">
+      <div style="display:flex;justify-content:center;margin-bottom:14px;">
+        ${deviceDiagramSVG(kat)}
+      </div>
+
+      <div style="margin-bottom:12px;">
+        <div style="font-size:11px;font-weight:700;letter-spacing:0.08em;color:var(--muted);text-transform:uppercase;margin-bottom:6px;">Wo suchen:</div>
+        <div style="font-size:14px;font-weight:600;color:var(--text);line-height:1.5;">${escHtml(pos.primary)}</div>
+      </div>
+
+      <div style="margin-bottom:12px;">
+        <div style="font-size:11px;font-weight:700;letter-spacing:0.08em;color:var(--muted);text-transform:uppercase;margin-bottom:6px;">Falls nicht gefunden:</div>
+        <div style="font-size:13px;color:var(--muted);line-height:1.5;">${escHtml(pos.secondary)}</div>
+      </div>
+
+      <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:10px;padding:10px 12px;">
+        <div style="font-size:13px;color:#92400e;line-height:1.5;">💡 <strong>Tipp:</strong> ${escHtml(pos.tip)}</div>
+      </div>
+    </div>
+
+    <button onclick="tsWizard.step=3;renderTSOverlay();"
+      style="width:100%;background:var(--primary);color:#fff;border:none;border-radius:14px;padding:16px;font-size:16px;font-weight:700;cursor:pointer;">
+      Bereit — Typenschild fotografieren →
+    </button>`;
+}
+
+// ── Device diagram SVG ────────────────────────────────────────────────────────
+function deviceDiagramSVG(kat) {
+  // Simple SVG: device outline + red dot showing nameplate location
+  const w = 200, h = 140;
+
+  // Dot position by category
+  const dots = {
+    'Waschmaschine':    { x: 55,  y: 70,  label: 'Türrahmen innen' },
+    'Wäschetrockner':   { x: 55,  y: 70,  label: 'Türrahmen innen' },
+    'Geschirrspüler':   { x: 38,  y: 55,  label: 'Türinnenkante' },
+    'Kühlschrank':      { x: 45,  y: 90,  label: 'Innen links' },
+    'Gefrierschrank':   { x: 45,  y: 80,  label: 'Innen links' },
+    'Gefriertruhe':     { x: 165, y: 65,  label: 'Rechts außen' },
+    'Herd/Backofen':    { x: 100, y: 30,  label: 'Unter Blende' },
+    'Kochfeld':         { x: 100, y: 125, label: 'Unterseite' },
+    'Mikrowelle':       { x: 165, y: 70,  label: 'Rückseite' },
+    'Kaffeemaschine':   { x: 80,  y: 125, label: 'Unterseite' },
+    'Dunstabzugshaube': { x: 100, y: 55,  label: 'Hinter Fettfilter' },
+    'Klimaanlage':      { x: 165, y: 50,  label: 'Seite' },
+    'Staubsauger':      { x: 100, y: 125, label: 'Unterseite' },
+  };
+  const dot   = dots[kat] || { x: 165, y: 70, label: 'Rückseite' };
+  const shape = buildDeviceShape(kat, w, h);
+
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="max-width:100%;">
+    ${shape}
+    <!-- Arrow -->
+    <line x1="${dot.x + (dot.x < w/2 ? 20 : -20)}" y1="${dot.y}"
+          x2="${dot.x}" y2="${dot.y}"
+          stroke="#ef4444" stroke-width="1.5" marker-end="url(#arr)"/>
+    <defs>
+      <marker id="arr" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+        <path d="M0,0 L0,6 L6,3 z" fill="#ef4444"/>
+      </marker>
+    </defs>
+    <!-- Red dot -->
+    <circle cx="${dot.x}" cy="${dot.y}" r="5" fill="#ef4444" opacity="0.9"/>
+    <circle cx="${dot.x}" cy="${dot.y}" r="9" fill="#ef4444" opacity="0.2"/>
+    <!-- Label -->
+    <text x="${dot.x + (dot.x < w/2 ? 25 : -10)}" y="${dot.y + (dot.y > h-25 ? -8 : 4)}"
+      text-anchor="${dot.x < w/2 ? 'start' : 'end'}"
+      font-size="10" font-weight="600" fill="#ef4444">${dot.label}</text>
+  </svg>`;
+}
+
+function buildDeviceShape(kat, w, h) {
+  // Front-loaders: box with porthole door
+  if (['Waschmaschine','Wäschetrockner'].includes(kat)) {
+    return `<rect x="20" y="20" width="160" height="100" rx="8" fill="#F0F0EB" stroke="#ccc" stroke-width="1.5"/>
+            <circle cx="80" cy="70" r="32" fill="#fff" stroke="#bbb" stroke-width="1.5"/>
+            <circle cx="80" cy="70" r="24" fill="#E8E8E4" stroke="#ccc" stroke-width="1"/>`;
+  }
+  // Dishwasher: box with pull-down door
+  if (kat === 'Geschirrspüler') {
+    return `<rect x="30" y="10" width="140" height="110" rx="6" fill="#F0F0EB" stroke="#ccc" stroke-width="1.5"/>
+            <rect x="30" y="90" width="140" height="30" rx="4" fill="#E0E0DA" stroke="#bbb" stroke-width="1"/>
+            <rect x="60" y="98" width="80" height="4" rx="2" fill="#bbb"/>`;
+  }
+  // Tall appliances: tall rectangle
+  if (['Kühlschrank','Gefrierschrank'].includes(kat)) {
+    return `<rect x="50" y="10" width="100" height="120" rx="6" fill="#F0F0EB" stroke="#ccc" stroke-width="1.5"/>
+            <line x1="50" y1="75" x2="150" y2="75" stroke="#bbb" stroke-width="1"/>
+            <rect x="53" y="12" width="14" height="60" rx="3" fill="#E0E0DA"/>`;
+  }
+  // Freezer chest: wide low box
+  if (kat === 'Gefriertruhe') {
+    return `<rect x="15" y="30" width="170" height="90" rx="6" fill="#F0F0EB" stroke="#ccc" stroke-width="1.5"/>
+            <rect x="15" y="30" width="170" height="20" rx="4" fill="#E0E0DA" stroke="#bbb" stroke-width="1"/>`;
+  }
+  // Oven: box with door + top controls
+  if (kat === 'Herd/Backofen') {
+    return `<rect x="20" y="10" width="160" height="120" rx="6" fill="#F0F0EB" stroke="#ccc" stroke-width="1.5"/>
+            <rect x="20" y="10" width="160" height="30" rx="4" fill="#E0E0DA" stroke="#bbb" stroke-width="1"/>
+            <rect x="35" y="50" width="130" height="70" rx="4" fill="#E8E8E4" stroke="#bbb" stroke-width="1"/>`;
+  }
+  // Rangehood: wide flat shape
+  if (kat === 'Dunstabzugshaube') {
+    return `<polygon points="20,90 50,20 150,20 180,90" fill="#F0F0EB" stroke="#ccc" stroke-width="1.5"/>
+            <rect x="40" y="60" width="120" height="14" rx="4" fill="#E0E0DA" stroke="#bbb" stroke-width="1"/>`;
+  }
+  // Default: generic box
+  return `<rect x="30" y="15" width="140" height="110" rx="8" fill="#F0F0EB" stroke="#ccc" stroke-width="1.5"/>
+          <rect x="30" y="15" width="140" height="24" rx="6" fill="#E0E0DA" stroke="#bbb" stroke-width="1"/>`;
+}
+
+// ── Step 3: Typenschild fotografieren ─────────────────────────────────────────
+function buildTSStep3() {
+  const kat = tsWizard.kategorie;
+  const { tsDataUrl, tsLoading, tsError } = tsWizard;
+
+  const preview = tsDataUrl ? `
+    <div style="position:relative;border-radius:12px;overflow:hidden;height:160px;margin-bottom:14px;">
+      <img src="${tsDataUrl}" style="width:100%;height:100%;object-fit:cover;">
+      ${tsLoading ? `
+        <div style="position:absolute;inset:0;background:rgba(0,0,0,0.6);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:#fff;">
+          <div style="width:28px;height:28px;border:3px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin 0.7s linear infinite;"></div>
+          <span style="font-size:13px;font-weight:500;">Typenschild wird ausgelesen …</span>
+        </div>` : ''}
+    </div>` : '';
+
+  const unreadable = tsError?.includes('unlesbar') || tsError?.includes('unreadable');
+
+  return `
+    <div style="text-align:center;padding:0.5rem 0 1.25rem;">
+      <div style="font-size:36px;margin-bottom:8px;">📷</div>
+      <div style="font-size:20px;font-weight:800;color:var(--text);margin-bottom:4px;">Typenschild fotografieren</div>
+      <div style="font-size:13px;color:var(--muted);">Fotografiere das Typenschild so nah wie möglich — alle Texte müssen lesbar sein.</div>
+    </div>
+
+    ${preview}
+
+    ${tsError && unreadable ? `
+      <div style="background:#fffbeb;border:1.5px solid #fcd34d;border-radius:10px;padding:12px 14px;margin-bottom:14px;">
+        <div style="font-size:13px;font-weight:600;color:#92400e;margin-bottom:4px;">⚠️ Typenschild nicht lesbar</div>
+        <div style="font-size:12px;color:#92400e;">Bitte näher heranfahren und erneut versuchen.</div>
+      </div>` : ''}
+
+    ${tsError && !unreadable ? `
+      <div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:10px;padding:12px 14px;margin-bottom:14px;font-size:13px;color:#991b1b;">
+        ⚠️ ${escHtml(tsError)}
+      </div>` : ''}
+
+    <div style="background:#fff;border-radius:14px;padding:1rem;box-shadow:0 1px 3px rgba(0,0,0,0.06);margin-bottom:14px;">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px;">Tipps für ein gutes Foto:</div>
+      ${['Taschenlampe auf das Schild richten', 'So nah wie möglich heranfahren', 'Kein Blitz — erzeugt Reflexionen', 'Gerät still halten bis Foto scharf ist']
+        .map(t => `<div style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);margin-bottom:6px;"><span style="color:var(--primary);font-weight:700;">✓</span>${t}</div>`)
+        .join('')}
+    </div>
+
+    <input type="file" id="ts-photo-input" accept="image/*" capture="environment" style="display:none;" onchange="handleNameplatePhoto(event)">
+    <button onclick="document.getElementById('ts-photo-input').click()" ${tsLoading ? 'disabled' : ''}
+      style="width:100%;background:var(--primary);color:#fff;border:none;border-radius:14px;padding:16px;font-size:16px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;opacity:${tsLoading?'0.5':'1'};">
+      ${SVG.camera} ${tsDataUrl ? 'Erneut fotografieren' : 'Jetzt fotografieren'}
+    </button>`;
+}
+
+async function handleNameplatePhoto(e) {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  e.target.value = '';
+
+  try {
+    // Max 1568px, as specified
+    const { dataUrl, base64, mime } = await resizeImage(file, 1568);
+    tsWizard = { ...tsWizard, tsDataUrl: dataUrl, tsPhoto: base64, tsMime: mime, tsLoading: true, tsError: null };
+    renderTSOverlay();
+
+    const result = await analyzeNameplate(base64, mime);
+
+    if (result.unreadable) {
+      tsWizard = { ...tsWizard, tsLoading: false, tsError: 'unlesbar — Bitte näher heranfahren.' };
+      renderTSOverlay();
+      return;
+    }
+
+    tsWizard = { ...tsWizard, tsLoading: false, tsResult: result, tsError: null, step: 4 };
+    renderTSOverlay();
+  } catch (err) {
+    tsWizard = { ...tsWizard, tsLoading: false, tsError: err.message };
+    renderTSOverlay();
+  }
+}
+
+async function analyzeNameplate(base64, mime) {
+  const data = await callAnthropic({
+    model: 'claude-sonnet-4-20250514',
+    max_tokens: 500,
+    messages: [{ role: 'user', content: [
+      { type: 'image', source: { type: 'base64', media_type: mime, data: base64 } },
+      { type: 'text',  text: `This is a device nameplate/label photo. Extract ALL visible text carefully. Return ONLY valid JSON:
+{
+  "brand": null,
+  "model": null,
+  "e_number": null,
+  "serial_number": null,
+  "year_of_manufacture": null,
+  "energy_class": null,
+  "capacity": null,
+  "wattage": null,
+  "raw_text": "all visible text concatenated",
+  "confidence": "high",
+  "unreadable": false
+}` },
+    ]}],
+  });
+  const text  = data.content[0].text;
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error('Keine Antwort vom API erhalten.');
+  return JSON.parse(match[0]);
+}
+
+// ── Step 4: Daten bestätigen ──────────────────────────────────────────────────
+function buildTSStep4() {
+  const r   = tsWizard.tsResult || {};
+  const inp = `style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;font-size:14px;color:var(--text);outline:none;box-sizing:border-box;background:#fff;"`;
+  const lbl = `style="font-size:10px;font-weight:700;letter-spacing:0.1em;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:5px;"`;
+
+  const field = (id, label, val, placeholder='') => `
+    <div style="margin-bottom:12px;">
+      <label ${lbl}>${label}</label>
+      <input id="${id}" type="text" value="${escHtml(val||'')}" placeholder="${placeholder}" ${inp}>
+    </div>`;
+
+  return `
+    <div style="text-align:center;padding:0.5rem 0 1.25rem;">
+      <div style="font-size:36px;margin-bottom:8px;">✅</div>
+      <div style="font-size:20px;font-weight:800;color:var(--text);margin-bottom:4px;">Daten prüfen & bestätigen</div>
+      <div style="font-size:13px;color:var(--muted);">Alle Felder sind bearbeitbar.</div>
+    </div>
+
+    ${r.confidence === 'low' ? `
+      <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:12px;color:#92400e;">
+        ⚠️ Niedrige Erkennungssicherheit — bitte Daten prüfen.
+      </div>` : ''}
+
+    <div style="background:#fff;border-radius:14px;padding:1.25rem;box-shadow:0 1px 3px rgba(0,0,0,0.06);margin-bottom:14px;">
+      ${field('ts-brand',   'Marke',        r.brand,            'Bosch')}
+      ${field('ts-model',   'Modell',        r.model,            'WAX28E75')}
+      ${field('ts-enum',    'E-Nummer',      r.e_number,         'E-Nr. 123 456 789')}
+      ${field('ts-serial',  'Seriennummer',  r.serial_number,    'SN-XXXXXXXX')}
+      ${field('ts-year',    'Baujahr',       r.year_of_manufacture, '2021')}
+      ${r.capacity ? field('ts-cap', 'Kapazität', r.capacity, '9 kg') : ''}
+
+      ${r.raw_text ? `
+        <div style="margin-top:8px;padding:10px;background:var(--bg);border-radius:8px;">
+          <div style="font-size:10px;font-weight:700;letter-spacing:0.08em;color:var(--muted);text-transform:uppercase;margin-bottom:4px;">Rohtext vom Typenschild</div>
+          <div style="font-size:11px;color:var(--muted);font-family:monospace;line-height:1.5;word-break:break-all;">${escHtml(r.raw_text)}</div>
+        </div>` : ''}
+    </div>
+
+    <button onclick="confirmNameplateData()"
+      style="width:100%;background:var(--primary);color:#fff;border:none;border-radius:14px;padding:16px;font-size:16px;font-weight:700;cursor:pointer;margin-bottom:10px;">
+      ✓ Daten übernehmen
+    </button>
+    <button onclick="closeTSWizard()"
+      style="width:100%;background:#fff;border:1.5px solid var(--border);border-radius:14px;padding:14px;font-size:14px;font-weight:600;color:var(--text);cursor:pointer;">
+      ✏️ Manuell korrigieren
+    </button>
+
+    <!-- PHASE 2 TODO:
+         Track which TYPENSCHILD_POSITIONEN entries were most helpful
+         (user found it on first try). Use this data to reorder
+         primary/secondary hints per category based on actual success rates.
+         Store anonymized success data in Supabase. -->`;
+}
+
+function confirmNameplateData() {
+  const brand  = document.getElementById('ts-brand')?.value.trim()  || '';
+  const model  = document.getElementById('ts-model')?.value.trim()  || '';
+  const serial = document.getElementById('ts-serial')?.value.trim() || '';
+  const year   = document.getElementById('ts-year')?.value.trim()   || '';
+  const cap    = document.getElementById('ts-cap')?.value.trim()    || '';
+  const eNum   = document.getElementById('ts-enum')?.value.trim()   || '';
+
+  // Sync values back to main form
+  form.marke  = brand  || form.marke;
+  form.modell = model  || form.modell;
+  form.showTSBanner = false;
+
+  // Store extended nameplate data (saved to device on creation/edit)
+  form._nameplate = {
+    serial_number:       serial  || null,
+    year_of_manufacture: year    || null,
+    capacity:            cap     || null,
+    e_number:            eNum    || null,
+    raw_text:            tsWizard.tsResult?.raw_text || null,
+  };
+
+  closeTSWizard();
+  renderPage();
+  showToast('Typenschild-Daten übernommen ✓');
+}
+
+function tsBack() {
+  tsWizard = { ...tsWizard, step: tsWizard.step - 1 };
+  renderTSOverlay();
+}
+
+// ─── Barcode scanner (stub) ───────────────────────────────────────────────────
+function openBarcodeScanner() { showToast('Barcode-Scanner kommt bald ✨'); }
 
 // ─── Save ─────────────────────────────────────────────────────────────────────
 function handleSave(e) {
@@ -284,25 +760,25 @@ function handleSave(e) {
   if (!name || !room) { showToast('Bitte Name und Raum ausfüllen'); return; }
 
   if (editDevice) {
-    // Update existing device
     const d = state.devices.find(x => x.id === editId);
     if (d) {
       d.name   = name;
       d.marke  = marke  || '–';
       d.modell = modell || '–';
       d.room   = room;
-      if (form.photo) { d.photo = form.photo; d.photoMime = form.mime; }
+      if (form.photo)      { d.photo = form.photo; d.photoMime = form.mime; }
+      if (form._nameplate) { Object.assign(d, form._nameplate); }
       saveDevices();
       showToast('Änderungen gespeichert ✓');
       window.location.href = `device.html?id=${editId}`;
     }
   } else {
-    // Create new device
     const id = crypto.randomUUID();
     const device = {
       id, name, marke: marke || '–', modell: modell || '–', room,
       photo: form.photo || null, photoMime: form.mime || null,
       createdAt: Date.now(),
+      ...(form._nameplate || {}),
     };
     state.devices.push(device);
     saveDevices();
