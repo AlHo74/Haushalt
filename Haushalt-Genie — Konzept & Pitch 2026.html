@@ -1,0 +1,859 @@
+<!DOCTYPE html>
+<!-- saved from url=(0072)file:///Users/alexanderhohenthaner/Downloads/HaushaltsGenie_Konzept.html -->
+<html lang="de"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Haushalt-Genie — Konzept &amp; Pitch 2026</title>
+<link href="./Haushalt-Genie — Konzept &amp; Pitch 2026_files/css2" rel="stylesheet">
+<style>
+  :root {
+    --teal: #0F6E56;
+    --teal-mid: #1D9E75;
+    --teal-light: #E1F5EE;
+    --teal-pale: #F0FAF6;
+    --amber: #BA7517;
+    --amber-light: #FEF3E2;
+    --blue: #185FA5;
+    --blue-light: #EAF3FD;
+    --red: #A32D2D;
+    --red-light: #FDEAEA;
+    --dark: #1a1a18;
+    --mid: #444440;
+    --muted: #888882;
+    --border: #e8e8e4;
+    --bg: #fafaf8;
+    --white: #ffffff;
+    --serif: 'DM Serif Display', Georgia, serif;
+    --sans: 'DM Sans', system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body { font-family: var(--sans); background: var(--bg); color: var(--dark); font-size: 15px; line-height: 1.7; }
+
+  /* NAV */
+  nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; background: rgba(250,250,248,0.92); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); padding: 0 2rem; height: 56px; display: flex; align-items: center; justify-content: space-between; }
+  .nav-logo { font-family: var(--serif); font-size: 20px; color: var(--teal); }
+  .nav-links { display: flex; gap: 1.5rem; list-style: none; }
+  .nav-links a { font-size: 13px; color: var(--muted); text-decoration: none; font-weight: 500; transition: color 0.2s; }
+  .nav-links a:hover { color: var(--teal); }
+  .nav-tag { font-size: 11px; background: var(--teal-light); color: var(--teal); padding: 3px 10px; border-radius: 20px; font-weight: 500; }
+
+  /* LAYOUT */
+  .page { max-width: 900px; margin: 0 auto; padding: 5rem 2rem 4rem; }
+  .section { padding: 4rem 0; border-top: 1px solid var(--border); }
+  .section:first-child { border-top: none; }
+
+  /* TYPOGRAPHY */
+  .eyebrow { font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.1em; color: var(--teal); margin-bottom: 0.75rem; }
+  h1 { font-family: var(--serif); font-size: clamp(36px, 6vw, 58px); line-height: 1.1; color: var(--dark); margin-bottom: 1.25rem; }
+  h2 { font-family: var(--serif); font-size: 32px; line-height: 1.2; color: var(--dark); margin-bottom: 1rem; }
+  h3 { font-size: 17px; font-weight: 500; color: var(--dark); margin-bottom: 0.5rem; }
+  p { color: var(--mid); margin-bottom: 1rem; }
+  .lead { font-size: 18px; color: var(--mid); line-height: 1.7; max-width: 680px; }
+
+  /* HERO */
+  .hero { padding: 5rem 0 3rem; }
+  .hero-kicker { display: inline-flex; align-items: center; gap: 8px; background: var(--teal-light); color: var(--teal); font-size: 12px; font-weight: 500; padding: 5px 14px; border-radius: 20px; margin-bottom: 1.5rem; }
+  .hero-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--teal-mid); }
+  .hero-sub { font-size: 19px; color: var(--mid); max-width: 640px; line-height: 1.6; margin-bottom: 2rem; }
+  .hero-meta { display: flex; gap: 2rem; flex-wrap: wrap; }
+  .hero-meta-item { font-size: 13px; color: var(--muted); }
+  .hero-meta-item strong { color: var(--dark); font-weight: 500; }
+
+  /* CARDS */
+  .card { background: var(--white); border: 1px solid var(--border); border-radius: 14px; padding: 1.5rem; }
+  .card-teal { background: var(--teal-light); border-color: transparent; }
+  .card-amber { background: var(--amber-light); border-color: transparent; }
+  .card-blue { background: var(--blue-light); border-color: transparent; }
+  .card-red { background: var(--red-light); border-color: transparent; }
+  .card-dark { background: var(--dark); border-color: transparent; color: var(--white); }
+  .card-dark p, .card-dark h3 { color: rgba(255,255,255,0.8); }
+  .card-dark h3 { color: var(--white); }
+
+  /* GRIDS */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+
+  /* PROBLEM STATEMENT */
+  .stat-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin: 2rem 0; }
+  .stat-box { text-align: center; padding: 1.5rem 1rem; background: var(--white); border: 1px solid var(--border); border-radius: 14px; }
+  .stat-num { font-family: var(--serif); font-size: 40px; color: var(--teal); line-height: 1; }
+  .stat-label { font-size: 13px; color: var(--muted); margin-top: 6px; }
+
+  /* AGENTS */
+  .agent-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 1.5rem 0; }
+  .agent-card { background: var(--white); border: 1px solid var(--border); border-radius: 12px; padding: 1.1rem 1.25rem; }
+  .agent-num { font-family: var(--serif); font-size: 28px; color: var(--teal-light); line-height: 1; margin-bottom: 6px; }
+  .agent-title { font-size: 14px; font-weight: 500; color: var(--dark); margin-bottom: 4px; }
+  .agent-desc { font-size: 12px; color: var(--muted); line-height: 1.5; }
+
+  /* DISCLAIMER */
+  .disc-stack { display: flex; flex-direction: column; gap: 8px; margin: 1.5rem 0; }
+  .disc { display: flex; align-items: flex-start; gap: 12px; padding: 10px 14px; border-radius: 10px; font-size: 13px; }
+  .disc-badge { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; padding: 2px 8px; border-radius: 20px; white-space: nowrap; margin-top: 1px; flex-shrink: 0; }
+  .disc-1 { background: #f0f0ee; color: var(--muted); }
+  .disc-1 .disc-badge { background: #ddd; color: #666; }
+  .disc-2 { background: var(--amber-light); color: var(--amber); }
+  .disc-2 .disc-badge { background: #BA7517; color: white; }
+  .disc-3 { background: #FEF0E6; color: #8B4000; }
+  .disc-3 .disc-badge { background: #C85000; color: white; }
+  .disc-4 { background: var(--red-light); color: var(--red); font-weight: 500; }
+  .disc-4 .disc-badge { background: var(--red); color: white; }
+
+  /* SWOT */
+  .swot-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 1.5rem 0; }
+  .swot-card { border-radius: 14px; padding: 1.4rem; }
+  .swot-s { background: var(--teal-light); }
+  .swot-w { background: var(--amber-light); }
+  .swot-o { background: var(--blue-light); }
+  .swot-t { background: var(--red-light); }
+  .swot-header { display: flex; align-items: center; gap: 10px; margin-bottom: 1rem; padding-bottom: 0.75rem; border-bottom: 1px solid rgba(0,0,0,0.08); }
+  .swot-en { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; }
+  .swot-de { font-size: 17px; font-weight: 500; color: var(--dark); }
+  .swot-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .swot-s .swot-en, .swot-s .swot-dot { color: var(--teal); background: var(--teal); }
+  .swot-w .swot-en { color: var(--amber); } .swot-w .swot-dot { background: var(--amber); }
+  .swot-o .swot-en { color: var(--blue); } .swot-o .swot-dot { background: var(--blue); }
+  .swot-t .swot-en { color: var(--red); } .swot-t .swot-dot { background: var(--red); }
+  .swot-item { display: flex; gap: 9px; margin-bottom: 9px; align-items: flex-start; font-size: 13px; color: var(--mid); line-height: 1.55; }
+  .swot-item-dot { width: 4px; height: 4px; border-radius: 50%; flex-shrink: 0; margin-top: 7px; }
+  .swot-s .swot-item-dot { background: var(--teal); }
+  .swot-w .swot-item-dot { background: var(--amber); }
+  .swot-o .swot-item-dot { background: var(--blue); }
+  .swot-t .swot-item-dot { background: var(--red); }
+  .swot-item strong { color: var(--dark); font-weight: 500; }
+
+  /* COMPETITION TABLE */
+  .comp-table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 1.5rem 0; border-radius: 12px; overflow: hidden; border: 1px solid var(--border); }
+  .comp-table th { background: var(--dark); color: white; padding: 10px 14px; text-align: left; font-weight: 500; font-size: 12px; }
+  .comp-table th:last-child { background: var(--teal); }
+  .comp-table td { padding: 9px 14px; border-top: 1px solid var(--border); color: var(--mid); }
+  .comp-table td:first-child { font-weight: 500; color: var(--dark); background: #f7f7f5; }
+  .comp-table td:last-child { background: var(--teal-pale); color: var(--teal); font-weight: 500; }
+  .comp-table tr:hover td { background: #f5f5f2; }
+  .comp-table tr:hover td:first-child { background: #efefeb; }
+  .comp-table tr:hover td:last-child { background: #d8f0e8; }
+
+  /* PRICING */
+  .pricing-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin: 1.5rem 0; }
+  .price-card { background: var(--white); border: 1px solid var(--border); border-radius: 14px; padding: 1.4rem; }
+  .price-card.featured { border: 2px solid var(--teal); }
+  .price-badge { display: inline-block; background: var(--teal-light); color: var(--teal); font-size: 11px; font-weight: 500; padding: 3px 10px; border-radius: 20px; margin-bottom: 10px; }
+  .price-tier { font-size: 13px; font-weight: 500; color: var(--muted); margin-bottom: 4px; }
+  .price-val { font-family: var(--serif); font-size: 28px; color: var(--teal); line-height: 1.1; margin-bottom: 6px; }
+  .price-sub { font-size: 11px; color: var(--muted); }
+  .price-desc { font-size: 13px; color: var(--mid); margin-top: 10px; line-height: 1.5; }
+
+  /* ROADMAP */
+  .roadmap { display: flex; flex-direction: column; gap: 0; margin: 1.5rem 0; }
+  .phase { display: grid; grid-template-columns: 130px 1fr; gap: 1.5rem; padding: 1.2rem 0; border-top: 1px solid var(--border); align-items: start; }
+  .phase:last-child { border-bottom: 1px solid var(--border); }
+  .phase-tag { display: inline-block; font-size: 12px; font-weight: 500; color: var(--teal); background: var(--teal-light); padding: 3px 10px; border-radius: 20px; white-space: nowrap; }
+  .phase-title { font-size: 15px; font-weight: 500; color: var(--dark); margin-bottom: 4px; }
+  .phase-body { font-size: 13px; color: var(--mid); line-height: 1.6; }
+  .phase-kpi { display: inline-flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  .kpi { font-size: 11px; background: #f0f0ee; color: var(--mid); padding: 2px 9px; border-radius: 20px; }
+
+  /* FINANCIALS */
+  .fin-table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 1.5rem 0; }
+  .fin-table th { text-align: left; padding: 8px 12px; font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); border-bottom: 2px solid var(--border); }
+  .fin-table td { padding: 9px 12px; border-bottom: 1px solid var(--border); color: var(--mid); }
+  .fin-table td:first-child { font-weight: 500; color: var(--dark); }
+  .fin-table .highlight { background: var(--teal-pale); }
+  .fin-table .highlight td { color: var(--teal); font-weight: 500; }
+  .fin-table .highlight td:first-child { color: var(--teal); }
+
+  .metric-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 1.5rem 0; }
+  .metric { background: var(--white); border: 1px solid var(--border); border-radius: 12px; padding: 1.1rem; text-align: center; }
+  .metric-val { font-family: var(--serif); font-size: 26px; color: var(--teal); line-height: 1; }
+  .metric-label { font-size: 11px; color: var(--muted); margin-top: 5px; }
+
+  /* FOERDERUNGEN */
+  .foerd-grid { display: flex; flex-direction: column; gap: 12px; margin: 1.5rem 0; }
+  .foerd-card { background: var(--white); border: 1px solid var(--border); border-radius: 12px; padding: 1.25rem 1.5rem; display: grid; grid-template-columns: 1fr auto; gap: 1rem; align-items: start; }
+  .foerd-name { font-size: 15px; font-weight: 500; color: var(--dark); margin-bottom: 3px; }
+  .foerd-org { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  .foerd-desc { font-size: 13px; color: var(--mid); line-height: 1.55; }
+  .foerd-amount { font-family: var(--serif); font-size: 20px; color: var(--teal); text-align: right; white-space: nowrap; }
+  .foerd-type { font-size: 11px; color: var(--muted); text-align: right; margin-top: 3px; }
+  .foerd-timing { font-size: 11px; margin-top: 6px; }
+  .foerd-timing span { background: var(--teal-light); color: var(--teal); padding: 2px 8px; border-radius: 20px; font-weight: 500; }
+
+  /* PITCH */
+  .pitch-hook { font-family: var(--serif); font-size: clamp(22px, 3vw, 30px); line-height: 1.35; color: var(--dark); border-left: 4px solid var(--teal); padding-left: 1.5rem; margin: 2rem 0; }
+  .pitch-block { background: var(--teal); color: white; border-radius: 16px; padding: 2rem 2.5rem; margin: 1.5rem 0; }
+  .pitch-block h3 { color: white; font-size: 18px; margin-bottom: 0.75rem; }
+  .pitch-block p { color: rgba(255,255,255,0.85); margin-bottom: 0; }
+  .pitch-points { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 1.5rem 0; }
+  .pitch-point { background: var(--white); border: 1px solid var(--border); border-radius: 12px; padding: 1.1rem 1.25rem; }
+  .pitch-point-num { font-family: var(--serif); font-size: 32px; color: var(--teal-light); line-height: 1; }
+  .pitch-point-title { font-size: 14px; font-weight: 500; color: var(--dark); margin: 4px 0; }
+  .pitch-point-body { font-size: 13px; color: var(--mid); line-height: 1.55; }
+
+  /* REVENUE STREAMS */
+  .rev-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 1.5rem 0; }
+  .rev-card { background: var(--white); border: 1px solid var(--border); border-radius: 12px; padding: 1.1rem; }
+  .rev-phase { font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 5px; }
+  .rev-title { font-size: 14px; font-weight: 500; color: var(--dark); margin-bottom: 4px; }
+  .rev-body { font-size: 12px; color: var(--muted); line-height: 1.5; }
+
+  /* FOOTER */
+  footer { border-top: 1px solid var(--border); padding: 2rem; text-align: center; font-size: 12px; color: var(--muted); margin-top: 2rem; }
+  footer strong { color: var(--dark); }
+
+  /* UTILS */
+  .tag { display: inline-block; font-size: 11px; font-weight: 500; padding: 3px 10px; border-radius: 20px; }
+  .tag-teal { background: var(--teal-light); color: var(--teal); }
+  .tag-amber { background: var(--amber-light); color: var(--amber); }
+  .tag-red { background: var(--red-light); color: var(--red); }
+  ul.clean { list-style: none; padding: 0; }
+  ul.clean li { padding: 4px 0; font-size: 13px; color: var(--mid); display: flex; gap: 8px; align-items: flex-start; }
+  ul.clean li::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: var(--teal-mid); flex-shrink: 0; margin-top: 7px; }
+  ul.clean li strong { color: var(--dark); font-weight: 500; }
+
+  /* LIFECYCLE */
+  .lifecycle { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0; margin: 2rem 0; position: relative; }
+  .lifecycle::before { content: ''; position: absolute; top: 28px; left: 10%; right: 10%; height: 2px; background: linear-gradient(90deg, var(--teal-light), var(--teal), var(--teal-light)); z-index: 0; }
+  .lc-step { display: flex; flex-direction: column; align-items: center; text-align: center; position: relative; z-index: 1; }
+  .lc-icon { width: 56px; height: 56px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 22px; margin-bottom: 10px; border: 2px solid var(--teal-light); background: var(--white); }
+  .lc-icon.active { background: var(--teal); border-color: var(--teal); }
+  .lc-title { font-size: 13px; font-weight: 500; color: var(--dark); margin-bottom: 3px; }
+  .lc-desc { font-size: 11px; color: var(--muted); line-height: 1.4; max-width: 90px; }
+  .lc-new { position: absolute; top: -8px; right: -4px; background: var(--teal); color: white; font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 20px; text-transform: uppercase; }
+
+  /* VERKAUFEN / ERSETZEN FEATURE CARDS */
+  .feature-detail { background: var(--white); border: 1px solid var(--border); border-radius: 16px; padding: 1.75rem; margin-bottom: 16px; }
+  .feature-detail-header { display: flex; align-items: center; gap: 12px; margin-bottom: 1rem; }
+  .feature-icon { width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
+  .feature-icon-sell { background: var(--amber-light); }
+  .feature-icon-replace { background: var(--blue-light); }
+  .feature-detail-title { font-size: 18px; font-weight: 500; color: var(--dark); }
+  .feature-detail-sub { font-size: 13px; color: var(--muted); }
+  .steps-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 1.25rem; }
+  .step-box { background: var(--bg); border-radius: 10px; padding: 0.9rem; }
+  .step-num { font-size: 11px; font-weight: 700; color: var(--teal); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
+  .step-title { font-size: 13px; font-weight: 500; color: var(--dark); margin-bottom: 3px; }
+  .step-body { font-size: 12px; color: var(--muted); line-height: 1.5; }
+  .feature-highlight { background: var(--teal-pale); border-radius: 10px; padding: 0.9rem 1.1rem; margin-top: 1rem; font-size: 13px; color: var(--teal); font-weight: 500; }
+
+  @media (max-width: 640px) {
+    .grid-2, .grid-3, .grid-4, .swot-grid, .pricing-grid, .stat-row, .agent-grid, .pitch-points, .rev-grid, .metric-row, .steps-row { grid-template-columns: 1fr; }
+    .lifecycle { grid-template-columns: 1fr 1fr; gap: 16px; }
+    .lifecycle::before { display: none; }
+    nav .nav-links { display: none; }
+    .foerd-card { grid-template-columns: 1fr; }
+    .phase { grid-template-columns: 1fr; gap: 0.5rem; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-logo">🏠 Haushalt-Genie</div>
+  <ul class="nav-links">
+    <li><a href="#konzept">Konzept</a></li>
+    <li><a href="#wettbewerb">Wettbewerb</a></li>
+    <li><a href="#swot">SWOT</a></li>
+    <li><a href="#businessmodel">Business Model</a></li>
+    <li><a href="#roadmap">Roadmap</a></li>
+    <li><a href="#finanzen">Finanzen</a></li>
+    <li><a href="#lebenszyklus">Lebenszyklus</a></li>
+    <li><a href="#foerderung">Förderung</a></li>
+    <li><a href="#pitch">Pitch</a></li>
+  </ul>
+  <span class="nav-tag">Wien 2026</span>
+</nav>
+
+<div class="page">
+
+  <!-- HERO -->
+  <div class="hero" id="konzept">
+    <div class="hero-kicker"><div class="hero-dot"></div>Investor Konzept &amp; Pitch Deck</div>
+    <h1>Haushalt-Genie</h1>
+    <p class="hero-sub">Dein digitaler Haushaltsexperte. Die erste KI-App, die alle Geräte in deinem Haushalt kennt — von der quellenbasierten Beratung über Garantieverwaltung bis zur KI-gestützten Kaufberatung für den Nachfolger. Kein Smart Home, kein Connectivity-Zwang. Einfach die App, die endlich alle Fragen zu deinen Geräten beantwortet.</p>
+    <div class="hero-meta">
+      <div class="hero-meta-item"><strong>Gründer:</strong> Alex Hohenthaner</div>
+      <div class="hero-meta-item"><strong>Standort:</strong> Wien, Österreich</div>
+      <div class="hero-meta-item"><strong>Status:</strong> Funktionierender Prototype</div>
+      <div class="hero-meta-item"><strong>Zielmarkt:</strong> DACH</div>
+      <div class="hero-meta-item"><strong>Features:</strong> 10 implementiert</div>
+    </div>
+  </div>
+
+  <!-- PROBLEM -->
+  <div class="section">
+    <div class="eyebrow">Das Problem</div>
+    <h2>Niemand liest Gebrauchsanleitungen. Aber jeder braucht sie.</h2>
+    <p class="lead">Ein durchschnittlicher Haushalt besitzt 15–25 elektrische Geräte. Fragen zu Bedienung, Fehlern und Wartung kosten täglich Zeit. Die Antworten existieren — verteilt auf Hersteller-PDFs, Reddit, YouTube und Fachforen.</p>
+
+    <div class="stat-row">
+      <div class="stat-box">
+        <div class="stat-num">20</div>
+        <div class="stat-label">Geräte im Durchschnittshaushalt</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-num">47 Min</div>
+        <div class="stat-label">Durchschnittliche Suchzeit bei Geräteproblemen<br><span style="font-size:10px; color:#aaa;">(Interne Schätzung — Validierung durch Beta-Umfrage geplant)</span></div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-num">0</div>
+        <div class="stat-label">Deutsche Apps die das lösen</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- LÖSUNG -->
+  <div class="section">
+    <div class="eyebrow">Die Lösung</div>
+    <h2>6 spezialisierte KI-Agents pro Gerät</h2>
+    <p>Nach dem Erfassen eines Geräts starten 6 Agents parallel. Sie durchsuchen das Internet und befüllen eine flache, gerätespezifische Wissensdatenbank. Der KI-Chat antwortet <strong>ausschließlich</strong> auf Basis dieser Inhalte — kein Halluzinieren.</p>
+
+    <div class="agent-grid">
+      <div class="agent-card">
+        <div class="agent-num">01</div>
+        <div class="agent-title">Bedienungsanleitung</div>
+        <div class="agent-desc">Hersteller-Manuals direkt und via Aggregatoren. Erste Quelle, höchste Verlässlichkeit.</div>
+      </div>
+      <div class="agent-card">
+        <div class="agent-num">02</div>
+        <div class="agent-title">FAQs</div>
+        <div class="agent-desc">Häufige Fragen und verifizierten Antworten aus offiziellen und Community-Quellen.</div>
+      </div>
+      <div class="agent-card">
+        <div class="agent-num">03</div>
+        <div class="agent-title">Known Issues &amp; Fixes</div>
+        <div class="agent-desc">Bekannte Probleme mit verifizierten Lösungen aus Foren, Support-Seiten und Testberichten.</div>
+      </div>
+      <div class="agent-card">
+        <div class="agent-num">04</div>
+        <div class="agent-title">Hacks &amp; Tipps</div>
+        <div class="agent-desc">Community-Content: Reddit, YouTube, Blogs. Beste Tricks für mehr aus dem Gerät.</div>
+      </div>
+      <div class="agent-card">
+        <div class="agent-num">05</div>
+        <div class="agent-title">Ersatzteile &amp; Zubehör</div>
+        <div class="agent-desc">Kompatible Teile und Zubehör mit konkreten Suchbegriffen und Kaufquellen.</div>
+      </div>
+      <div class="agent-card">
+        <div class="agent-num">06</div>
+        <div class="agent-title">Energieeffizienz</div>
+        <div class="agent-desc">Verbrauchsdaten, Eco-Modi, Spartipps und Effizienzvergleiche pro Gerät.</div>
+      </div>
+    </div>
+
+    <h3 style="margin-top:2rem; margin-bottom:0.75rem;">4-Ebenen Disclaimer-System</h3>
+    <p style="margin-bottom:1rem; font-size:13px; color:var(--muted);">Jede Antwort trägt automatisch das rechtlich korrekte Disclaimer-Level basierend auf der Quelle.</p>
+    <div class="disc-stack">
+      <div class="disc disc-1"><span class="disc-badge">Ebene 1</span>Aus der offiziellen Herstelleranleitung. Haushalt-Genie übernimmt keine Haftung für Richtigkeit oder Schäden.</div>
+      <div class="disc disc-2"><span class="disc-badge">Ebene 2</span>Nicht vom Hersteller. Community-Fixes. Haushalt-Genie übernimmt keine Haftung für Richtigkeit oder Schäden.</div>
+      <div class="disc disc-3"><span class="disc-badge">Ebene 3</span>Community-Hacks, nicht vom Hersteller geprüft. Anwendung auf eigene Gefahr.</div>
+      <div class="disc disc-4"><span class="disc-badge">⚠ Ebene 4</span>SICHERHEITSWARNUNG: Öffnen des Geräts / Stromgefahr / Garantieverlust. Bitte Fachmann kontaktieren.</div>
+    </div>
+  </div>
+
+  <!-- ONBOARDING FEATURES -->
+  <div class="section">
+    <div class="eyebrow">Gerät erfassen</div>
+    <h2>Drei Wege, ein Gerät zu erfassen</h2>
+    <div class="grid-3">
+      <div class="card">
+        <h3>📷 Foto-Upload</h3>
+        <p style="font-size:13px; margin-top:8px;">KI erkennt Marke, Modell und Kategorie automatisch via Vision API. Ideal für bestehende Geräte.</p>
+        <span class="tag tag-teal">Für vorhandene Geräte</span>
+      </div>
+      <div class="card">
+        <h3>📦 Barcode-Scan</h3>
+        <p style="font-size:13px; margin-top:8px;">EAN-Code auf der Verpackung scannen. Direkte Abfrage der Produktdatenbank. Schnellstes Onboarding.</p>
+        <span class="tag tag-teal">Ideal beim Kauf</span>
+      </div>
+      <div class="card">
+        <h3>🔍 Modell-Finder</h3>
+        <p style="font-size:13px; margin-top:8px;">Geführte 4-Schritt-Suche: Kategorie bestätigen, Typenschild-Tipp, OCR-Scan, Bestätigung.</p>
+        <span class="tag tag-amber">Bei unbekanntem Modell</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- LEBENSZYKLUS -->
+  <div class="section" id="lebenszyklus">
+    <div class="eyebrow">Der vollständige Geräte-Lebenszyklus</div>
+    <h2>Von Kauf bis Ersatz — alles in einer App</h2>
+    <p>Haushalt-Genie begleitet jedes Gerät durch seinen kompletten Lebenszyklus. Das ist der entscheidende Unterschied zu Mitbewerbern, die nur einzelne Phasen abdecken.</p>
+
+    <div class="lifecycle">
+      <div class="lc-step">
+        <div class="lc-icon active">📦</div>
+        <div class="lc-title">Kaufen</div>
+        <div class="lc-desc">Barcode-Scan beim Auspacken</div>
+      </div>
+      <div class="lc-step">
+        <div class="lc-icon active">🔧</div>
+        <div class="lc-title">Nutzen</div>
+        <div class="lc-desc">6 Agents + AI-Chat + Wartung</div>
+      </div>
+      <div class="lc-step">
+        <div class="lc-icon active" style="position:relative;">🏷️<span class="lc-new">Neu</span></div>
+        <div class="lc-title">Verkaufen</div>
+        <div class="lc-desc">Inserat automatisch generieren</div>
+      </div>
+      <div class="lc-step">
+        <div class="lc-icon active" style="position:relative;">🔄<span class="lc-new">Neu</span></div>
+        <div class="lc-title">Ersetzen</div>
+        <div class="lc-desc">KI-Kaufberatung für Nachfolger</div>
+      </div>
+      <div class="lc-step">
+        <div class="lc-icon active">✅</div>
+        <div class="lc-title">Neu erfassen</div>
+        <div class="lc-desc">Zyklus beginnt von vorne</div>
+      </div>
+    </div>
+
+    <!-- VERKAUFEN FEATURE -->
+    <div class="feature-detail">
+      <div class="feature-detail-header">
+        <div class="feature-icon feature-icon-sell">🏷️</div>
+        <div>
+          <div class="feature-detail-title">Inserat vorbereiten</div>
+          <div class="feature-detail-sub">Gerät mit einem Klick auf willhaben inserieren — alle Daten sind bereits vorhanden</div>
+        </div>
+      </div>
+      <p style="font-size:13px; margin-bottom:0.5rem;">Die App kennt bereits Marke, Modell, Fotos, Kaufdatum und Known Issues. Daraus generiert die KI automatisch einen vollständigen Inseratstext inklusive Zeitwert-Schätzung — in Sekunden statt Minuten.</p>
+      <div class="steps-row">
+        <div class="step-box">
+          <div class="step-num">Schritt 1</div>
+          <div class="step-title">Zeitwert schätzen</div>
+          <div class="step-body">KI schätzt realistischen Verkaufspreis basierend auf Alter, Zustand und Marktdaten für willhaben.at</div>
+        </div>
+        <div class="step-box">
+          <div class="step-num">Schritt 2</div>
+          <div class="step-title">Text generieren</div>
+          <div class="step-body">KI schreibt ehrlichen, freundlichen Inseratstext auf Österreichisch — editierbar vor dem Kopieren</div>
+        </div>
+        <div class="step-box">
+          <div class="step-num">Schritt 3</div>
+          <div class="step-title">Vorschau prüfen</div>
+          <div class="step-body">Titel, Preis, Beschreibung und Fotos in einer übersichtlichen Inserats-Vorschau kontrollieren</div>
+        </div>
+        <div class="step-box">
+          <div class="step-num">Schritt 4</div>
+          <div class="step-title">Export &amp; Inserieren</div>
+          <div class="step-body">Text kopieren, willhaben öffnen, einfügen. Gerät wird als "Verkauft" markiert und ausgegraut.</div>
+        </div>
+      </div>
+      <div class="feature-highlight">Kein direktes API-Inserieren möglich (willhaben hat keine öffentliche Write-API) — aber 80% der Arbeit wird automatisch erledigt. Partnerschaft mit willhaben geplant ab Phase 3.</div>
+    </div>
+
+    <!-- ERSETZEN FEATURE -->
+    <div class="feature-detail">
+      <div class="feature-detail-header">
+        <div class="feature-icon feature-icon-replace">🔄</div>
+        <div>
+          <div class="feature-detail-title">Nachfolger-Assistent</div>
+          <div class="feature-detail-sub">5-Schritt-Wizard für die KI-gestützte Kaufentscheidung eines Nachfolgegeräts</div>
+        </div>
+      </div>
+      <p style="font-size:13px; margin-bottom:0.5rem;">Wenn ein Gerät zu alt, defekt oder nicht mehr zeitgemäß ist, startet der Nachfolger-Assistent. Er kennt das alte Gerät bereits und führt den User durch eine strukturierte Kaufentscheidung mit konkreten Produktempfehlungen.</p>
+      <div class="steps-row">
+        <div class="step-box">
+          <div class="step-num">Schritt 1</div>
+          <div class="step-title">Ersatz-Grund</div>
+          <div class="step-body">Zu alt / defekt / Upgrade / Energieeffizienz — beeinflusst die Empfehlungslogik</div>
+        </div>
+        <div class="step-box">
+          <div class="step-num">Schritt 2</div>
+          <div class="step-title">Budget</div>
+          <div class="step-body">Preisrange per Slider, Preispriorität festlegen. Automatisch angepasst an Gerätekategorie.</div>
+        </div>
+        <div class="step-box">
+          <div class="step-num">Schritt 3</div>
+          <div class="step-title">Feature-Abfrage</div>
+          <div class="step-body">KI generiert dynamisch relevante Fragen zu Features neuer Modelle dieser Gerätekategorie</div>
+        </div>
+        <div class="step-box">
+          <div class="step-num">Schritt 4 &amp; 5</div>
+          <div class="step-title">Prioritäten + Empfehlungen</div>
+          <div class="step-body">3 konkrete Produktempfehlungen: Preis-Leistung, meiste Features, Premium — mit direkten Suchlinks</div>
+        </div>
+      </div>
+      <div class="feature-highlight">Nach den Empfehlungen: "Neues Gerät erfassen" befüllt das Formular vor — der Lebenszyklus beginnt von vorne.</div>
+    </div>
+  </div>
+
+
+  <div class="section" id="wettbewerb">
+    <div class="eyebrow">Wettbewerbsanalyse</div>
+    <h2>Der DACH-Markt ist unbesetzt</h2>
+    <p>Es gibt US-amerikanische Apps mit ähnlichen Ansätzen. Keine einzige hat den deutschsprachigen Markt erschlossen oder diesen Funktionsumfang.</p>
+
+    <table class="comp-table">
+      <thead>
+        <tr>
+          <th>Feature</th>
+          <th>Centriq (USA)</th>
+          <th>Home &amp; Car DIY</th>
+          <th>Dwellin</th>
+          <th>Haushalt-Genie ✓</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>DACH-Markt / Deutsch</td><td>Nein</td><td>Nein</td><td>Nein</td><td>Ja</td></tr>
+        <tr><td>6 spezialisierte Agents</td><td>Nein</td><td>Nein</td><td>Nein</td><td>Ja</td></tr>
+        <tr><td>AI-Chat pro Gerät</td><td>Nein</td><td>Teilweise</td><td>Nein</td><td>Ja</td></tr>
+        <tr><td>Quellenbasierter Chat</td><td>Nein</td><td>Nein</td><td>Nein</td><td>Ja</td></tr>
+        <tr><td>Vermieter-Modus</td><td>Nein</td><td>Nein</td><td>Teilweise</td><td>Ja</td></tr>
+        <tr><td>4-Level Disclaimer-System</td><td>Nein</td><td>Nein</td><td>Nein</td><td>Ja</td></tr>
+        <tr><td>Barcode-Scan Onboarding</td><td>Nein</td><td>Nein</td><td>Nein</td><td>Ja</td></tr>
+        <tr><td>Inserat-Assistent (Verkaufen)</td><td>Nein</td><td>Nein</td><td>Nein</td><td>Ja</td></tr>
+        <tr><td>Nachfolger-Assistent (Ersetzen)</td><td>Nein</td><td>Nein</td><td>Nein</td><td>Ja</td></tr>
+        <tr><td>Vollständiger Geräte-Lebenszyklus</td><td>Nein</td><td>Nein</td><td>Nein</td><td>Ja</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- SWOT -->
+  <div class="section" id="swot">
+    <div class="eyebrow">SWOT Analyse</div>
+    <h2>Stärken, Schwächen, Chancen, Risiken</h2>
+    <div class="swot-grid">
+      <div class="swot-card swot-s">
+        <div class="swot-header">
+          <div class="swot-dot" style="background:var(--teal)"></div>
+          <div><div class="swot-en" style="color:var(--teal)">Strengths</div><div class="swot-de">Stärken</div></div>
+        </div>
+        <div class="swot-item"><div class="swot-item-dot" style="background:var(--teal)"></div><div><strong>DACH-Markt unbesetzt.</strong> Kein direkter deutschsprachiger Wettbewerber.</div></div>
+        <div class="swot-item"><div class="swot-item-dot" style="background:var(--teal)"></div><div><strong>6-Agenten-Architektur.</strong> Strukturierte Wissensdatenbank statt generischer KI.</div></div>
+        <div class="swot-item"><div class="swot-item-dot" style="background:var(--teal)"></div><div><strong>Vermieter-USP.</strong> Multi-Objekt-Verwaltung von keinem Mitbewerber abgedeckt.</div></div>
+        <div class="swot-item"><div class="swot-item-dot" style="background:var(--teal)"></div><div><strong>Rechtlich durchdacht.</strong> 4-Ebenen Disclaimer von Beginn an integriert.</div></div>
+        <div class="swot-item"><div class="swot-item-dot" style="background:var(--teal)"></div><div><strong>Shared DB Effizienz.</strong> API-Kosten wachsen pro Modell, nicht pro User.</div></div>
+        <div class="swot-item"><div class="swot-item-dot" style="background:var(--teal)"></div><div><strong>Vollständiger Lebenszyklus.</strong> Kaufen, Nutzen, Verkaufen, Ersetzen — kein Mitbewerber deckt alle Phasen ab.</div></div>
+      </div>
+
+      <div class="swot-card swot-w">
+        <div class="swot-header">
+          <div class="swot-dot" style="background:var(--amber)"></div>
+          <div><div class="swot-en" style="color:var(--amber)">Weaknesses</div><div class="swot-de">Schwächen</div></div>
+        </div>
+        <div class="swot-item"><div class="swot-item-dot" style="background:var(--amber)"></div><div><strong>Solo-Gründer.</strong> Kein technisches Co-Founder-Team, kein Eigenkapital.</div></div>
+        <div class="swot-item"><div class="swot-item-dot" style="background:var(--amber)"></div><div><strong>Datenqualität Phase 1.</strong> Scraping liefert anfangs lückenhafte Ergebnisse.</div></div>
+        <div class="swot-item"><div class="swot-item-dot" style="background:var(--amber)"></div><div><strong>API-Abhängigkeit.</strong> Preiserhöhungen von Anthropic treffen die Kernfunktion direkt.</div></div>
+        <div class="swot-item"><div class="swot-item-dot" style="background:var(--amber)"></div><div><strong>Keine Beta-User.</strong> Product-Market-Fit noch nicht validiert.</div></div>
+        <div class="swot-item"><div class="swot-item-dot" style="background:var(--amber)"></div><div><strong>App Store Gebühren.</strong> 30% Apple/Google Cut reduziert effektive Marge.</div></div>
+      </div>
+
+      <div class="swot-card swot-o">
+        <div class="swot-header">
+          <div class="swot-dot" style="background:var(--blue)"></div>
+          <div><div class="swot-en" style="color:var(--blue)">Opportunities</div><div class="swot-de">Chancen</div></div>
+        </div>
+        <div class="swot-item"><div class="swot-item-dot" style="background:var(--blue)"></div><div><strong>Digitalisierung KMU.</strong> Österreichische Hausverwaltungen digitalisieren aktiv.</div></div>
+        <div class="swot-item"><div class="swot-item-dot" style="background:var(--blue)"></div><div><strong>Datenbank als Asset.</strong> Europas vollständigste Gerätedatenbank — lizenzierbar.</div></div>
+        <div class="swot-item"><div class="swot-item-dot" style="background:var(--blue)"></div><div><strong>Affiliate Revenue.</strong> Ersatzteile und Fachleute-Vermittlung als Passiv-Einnahmen.</div></div>
+        <div class="swot-item"><div class="swot-item-dot" style="background:var(--blue)"></div><div><strong>Hersteller-Partnerschaften.</strong> Verifizierte Inhalte gegen Lizenzgebühr.</div></div>
+        <div class="swot-item"><div class="swot-item-dot" style="background:var(--blue)"></div><div><strong>Acquisition-Target.</strong> PropTech-Player und Versicherungen als Exit-Option.</div></div>
+        <div class="swot-item"><div class="swot-item-dot" style="background:var(--blue)"></div><div><strong>Europa-Expansion.</strong> Modell replizierbar für DE, CH, IT, FR.</div></div>
+      </div>
+
+      <div class="swot-card swot-t">
+        <div class="swot-header">
+          <div class="swot-dot" style="background:var(--red)"></div>
+          <div><div class="swot-en" style="color:var(--red)">Threats</div><div class="swot-de">Risiken</div></div>
+        </div>
+        <div class="swot-item"><div class="swot-item-dot" style="background:var(--red)"></div><div><strong>Big Tech Home AI.</strong> Apple &amp; Google entwickeln Smart Home Lösungen — Haushalt-Genie positioniert sich bewusst als wissensbasierter Assistent, nicht als Connectivity-Plattform.</div></div>
+        <div class="swot-item"><div class="swot-item-dot" style="background:var(--red)"></div><div><strong>Hersteller-eigene Apps.</strong> Bosch, Miele, Samsung bauen eigene KI-Assistenten.</div></div>
+        <div class="swot-item"><div class="swot-item-dot" style="background:var(--red)"></div><div><strong>Generative KI.</strong> ChatGPT wird gerätefähiger. Chat-Funktion könnte in 3-5 Jahren kostenlos sein.</div></div>
+        <div class="swot-item"><div class="swot-item-dot" style="background:var(--red)"></div><div><strong>Haftungsrisiko.</strong> Trotz Disclaimer bleibt rechtliche Angreifbarkeit bei Geräteschäden.</div></div>
+        <div class="swot-item"><div class="swot-item-dot" style="background:var(--red)"></div><div><strong>Scraping-Rechtslage.</strong> Hersteller könnten gegen automatisiertes Auslesen vorgehen.</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- BUSINESS MODEL -->
+  <div class="section" id="businessmodel">
+    <div class="eyebrow">Business Model</div>
+    <h2>Freemium SaaS mit starkem Vermieter-Tier</h2>
+
+    <div class="pricing-grid">
+      <div class="price-card">
+        <div class="price-tier">Free</div>
+        <div class="price-val">0 EUR</div>
+        <div class="price-sub">für immer</div>
+        <div class="price-desc">Bis 5 Geräte. Alle Basis-Features. Conversion-Funnel in bezahlte Tiers.</div>
+      </div>
+      <div class="price-card">
+        <div class="price-tier">Privat</div>
+        <div class="price-val">1,99 EUR</div>
+        <div class="price-sub">pro Monat</div>
+        <div class="price-desc">Unbegrenzte Geräte. Alle 6 Agents. Garantie- &amp; Wartungsverwaltung. Push-Erinnerungen.</div>
+      </div>
+      <div class="price-card featured">
+        <div class="price-badge">Hauptfokus</div>
+        <div class="price-tier">Vermieter</div>
+        <div class="price-val">9,99 EUR</div>
+        <div class="price-sub">pro Monat</div>
+        <div class="price-desc">Multi-Objekt-Verwaltung. Übergabeprotokoll-Export. Wartungshistorie pro Wohnung.</div>
+      </div>
+    </div>
+
+    <h3 style="margin-top:2rem; margin-bottom:1rem;">Weitere Revenue Streams</h3>
+    <div class="grid-2" style="gap:12px;">
+      <div class="rev-card">
+        <div class="rev-phase">Ab Phase 2</div>
+        <div class="rev-title">🏷️ Inserat-Assistent</div>
+        <div class="rev-body">Geräte-Inserate für willhaben automatisch generieren. Partnerschaft mit willhaben als Affiliate-Kanal geplant ab Phase 3.</div>
+      </div>
+      <div class="rev-card">
+        <div class="rev-phase">Ab Phase 2</div>
+        <div class="rev-title">🔄 Nachfolger-Assistent</div>
+        <div class="rev-body">KI-Kaufempfehlungen mit Affiliate-Links zu Amazon.at, Saturn, Media Markt. Provision pro Kauf.</div>
+      </div>
+      <div class="rev-card">
+        <div class="rev-phase">Ab Phase 3</div>
+        <div class="rev-title">🔧 Fachleute-Vermittlung</div>
+        <div class="rev-body">Reparaturfachleute vermitteln. 10% Provision pro Auftrag. Direkt aus dem Disclaimer-Level-4-Flow.</div>
+      </div>
+      <div class="rev-card">
+        <div class="rev-phase">Ab Phase 3</div>
+        <div class="rev-title">🏢 B2B / White Label</div>
+        <div class="rev-body">Hausverwaltungen, Versicherungen, Hersteller-Partnerschaften mit verifizierten Inhalten gegen Lizenzgebühr.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ROADMAP -->
+  <div class="section" id="roadmap">
+    <div class="eyebrow">Product Roadmap</div>
+    <h2>Von Prototype zu Series A</h2>
+    <div class="roadmap">
+      <div class="phase">
+        <div><span class="phase-tag">Phase 0 — Jetzt</span></div>
+        <div>
+          <div class="phase-title">Prototype fertig</div>
+          <div class="phase-body">Funktionierender Prototype als Single HTML File. Alle Kernfeatures implementiert: 6 Agents, Foto-Upload, Barcode-Scan, Modell-Finder, Disclaimer-System, Vermieter-Modus, Mein Gerät Tab, Inserat-Assistent, Nachfolger-Assistent.</div>
+          <div class="phase-kpi"><span class="kpi">Prototype live</span><span class="kpi">10 Features</span><span class="kpi">Stitch UI</span></div>
+        </div>
+      </div>
+      <div class="phase">
+        <div><span class="phase-tag">Phase 1 — M1–3</span></div>
+        <div>
+          <div class="phase-title">Private Beta</div>
+          <div class="phase-body">Migration auf Next.js + Supabase. Echtes Web-Scraping via Firecrawl. User Accounts. Shared Device Database. 100 Beta-User aus dem Vermieter-Umfeld.</div>
+          <div class="phase-kpi"><span class="kpi">100 Beta-User</span><span class="kpi">Echtes Scraping</span><span class="kpi">Supabase live</span></div>
+        </div>
+      </div>
+      <div class="phase">
+        <div><span class="phase-tag">Phase 2 — M4–6</span></div>
+        <div>
+          <div class="phase-title">Public Launch</div>
+          <div class="phase-body">App Store (iOS + Android als PWA). Freemium-Modell live. Stripe-Integration. Push Notifications. Mehrsprachigkeit (DE, EN).</div>
+          <div class="phase-kpi"><span class="kpi">1.000 User</span><span class="kpi">MRR 1.000 EUR</span><span class="kpi">5% Conversion</span></div>
+        </div>
+      </div>
+      <div class="phase">
+        <div><span class="phase-tag">Phase 3 — M7–12</span></div>
+        <div>
+          <div class="phase-title">Growth</div>
+          <div class="phase-body">Fachleute-Suche. Affiliate-Links. Übergabeprotokoll-Export. B2B-API für Wohnungsverwaltungssoftware. White-Label für Versicherungen.</div>
+          <div class="phase-kpi"><span class="kpi">10.000 User</span><span class="kpi">MRR 15.000 EUR</span><span class="kpi">50.000 Geräte in DB</span></div>
+        </div>
+      </div>
+      <div class="phase">
+        <div><span class="phase-tag">Phase 4 — Jahr 2</span></div>
+        <div>
+          <div class="phase-title">Europa-Expansion</div>
+          <div class="phase-body">DE, CH, IT, FR. B2B Enterprise (Hausverwaltungen). Hersteller-Partnerschaften mit verifizierten Inhalten gegen Lizenzgebühr. Smart Home / IoT-Anbindung als optionale Erweiterung (Phase 5).</div>
+          <div class="phase-kpi"><span class="kpi">100.000 User</span><span class="kpi">ARR 500K EUR</span><span class="kpi">Series A ready</span></div>
+        </div>
+      </div>
+      <div class="phase">
+        <div><span class="phase-tag" style="background:#f0f0ee; color:var(--muted)">Phase 5 — Optional</span></div>
+        <div>
+          <div class="phase-title">Smart Home / IoT-Anbindung</div>
+          <div class="phase-body">Haushalt-Genie ist bewusst keine Smart Home App. Geräte-Connectivity ist jedoch als optionale Erweiterung denkbar: direkte Datenabfrage von kompatiblen Geräten (Verbrauch, Fehlercodes) ohne manuelle Eingabe. Nur wenn Nachfrage besteht und Markt reif ist.</div>
+          <div class="phase-kpi"><span class="kpi">Optional</span><span class="kpi">Marktabhängig</span><span class="kpi">Nicht im MVP</span></div>
+        </div>
+      </div>
+  <div class="section" id="finanzen">
+    <div class="eyebrow">Grobes Finanzmodell</div>
+    <h2>Konservative Hochrechnung</h2>
+    <p>Alle Zahlen basieren auf 5% Free-zu-Paid Conversion, 3% monatlichem Churn und 95/5 Verhältnis Privat/Vermieter (konservative Startannahme — Vermieter-Anteil wächst mit gezieltem B2B-Fokus). Blended ARPU: 2,40 EUR. Break-even bei Monat 24.</p>
+
+    <table class="fin-table">
+      <thead>
+        <tr><th>Zeitraum</th><th>User gesamt</th><th>Zahlende User</th><th>MRR (Abos)</th><th>API-Kosten</th><th>Ergebnis</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Monat 3</td><td>500</td><td>25</td><td>60 EUR</td><td>180 EUR</td><td style="color:var(--red)">–120 EUR</td></tr>
+        <tr><td>Monat 6</td><td>2.000</td><td>100</td><td>240 EUR</td><td>720 EUR</td><td style="color:var(--red)">–480 EUR</td></tr>
+        <tr><td>Monat 12</td><td>10.000</td><td>500</td><td>1.200 EUR</td><td>3.600 EUR</td><td style="color:var(--red)">–2.400 EUR</td></tr>
+        <tr><td>Monat 18</td><td>30.000</td><td>1.500</td><td>3.600 EUR</td><td>5.400 EUR</td><td style="color:var(--red)">–1.800 EUR</td></tr>
+        <tr class="highlight"><td>Monat 24</td><td>70.000</td><td>3.500</td><td>8.400 EUR</td><td>7.200 EUR</td><td>+1.200 EUR</td></tr>
+        <tr><td>Monat 30</td><td>120.000</td><td>6.000</td><td>14.400 EUR</td><td>9.000 EUR</td><td style="color:var(--teal)">+5.400 EUR</td></tr>
+        <tr><td>Monat 36</td><td>200.000</td><td>10.000</td><td>24.000 EUR</td><td>12.000 EUR</td><td style="color:var(--teal)">+12.000 EUR</td></tr>
+      </tbody>
+    </table>
+
+    <div class="metric-row">
+      <div class="metric"><div class="metric-val">Monat 24</div><div class="metric-label">Break-even</div></div>
+      <div class="metric"><div class="metric-val">500K EUR</div><div class="metric-label">ARR Jahr 3 (Abos + Affiliate + B2B)</div></div>
+      <div class="metric"><div class="metric-val">70%+</div><div class="metric-label">Cache-Hit-Rate Jahr 3</div></div>
+      <div class="metric"><div class="metric-val">6x+</div><div class="metric-label">Ziel LTV/CAC</div></div>
+    </div>
+
+    <div class="card card-teal" style="margin-top:1rem;">
+      <h3 style="margin-bottom:0.5rem;">Der Shared Database Effekt</h3>
+      <p style="font-size:13px; margin-bottom:0;">API-Kosten fallen pro Gerätemodell, nicht pro User. Bei 70.000 Usern und nur ~5.000 verschiedenen Modellen in der DB fallen Agent-Kosten einmalig an — nicht 70.000-mal. Das ist der entscheidende Skalierungshebel.</p>
+    </div>
+  </div>
+
+  <!-- FÖRDERUNGEN -->
+  <div class="section" id="foerderung">
+    <div class="eyebrow">Förderungen Wien</div>
+    <h2>Empfohlene Förderprogramme</h2>
+    <p>Als Solo-Gründer in Wien ohne Eigenkapital gibt es einen klaren Pfad. Empfohlene Reihenfolge: zuerst nicht-verwässernde Förderungen, dann Angel-Investment aus stärkerer Position.</p>
+
+    <div class="foerd-grid">
+      <div class="foerd-card">
+        <div>
+          <div class="foerd-name">Gründungsstipendium Wien</div>
+          <div class="foerd-org">Wirtschaftsagentur Wien</div>
+          <div class="foerd-desc">Für innovative Einzelgründer ohne Eigenkapital. Speziell für digitale Produkte und KI-Anwendungen geeignet. Weniger streng als aws Pre-Seed, ideal als erster Schritt.</div>
+          <div class="foerd-timing"><span>Sofort anwendbar</span></div>
+        </div>
+        <div>
+          <div class="foerd-amount">25.000 EUR</div>
+          <div class="foerd-type">Nicht rückzahlbar</div>
+        </div>
+      </div>
+
+      <div class="foerd-card">
+        <div>
+          <div class="foerd-name">aws Gründungsbonus</div>
+          <div class="foerd-org">Austria Wirtschaftsservice</div>
+          <div class="foerd-desc">Niedrigschwellige Einstiegsförderung für neue Unternehmen. Schnelle Bearbeitung, wenig Bürokratie. Erster Schritt in das aws Ökosystem. Kombinierbar mit anderen Programmen.</div>
+          <div class="foerd-timing"><span>Nach Gewerbeanmeldung</span></div>
+        </div>
+        <div>
+          <div class="foerd-amount">10.000 EUR</div>
+          <div class="foerd-type">Nicht rückzahlbar</div>
+        </div>
+      </div>
+
+      <div class="foerd-card">
+        <div>
+          <div class="foerd-name">aws Pre-Seed</div>
+          <div class="foerd-org">Austria Wirtschaftsservice</div>
+          <div class="foerd-desc">Für innovative Startups mit nachgewiesenem Konzept. Benötigt: funktionierende App, erste User, rechtliche Struktur. Erstberatung kostenlos und unverbindlich unter aws.at/gruenden.</div>
+          <div class="foerd-timing"><span>Ab Phase 1 — nach Beta-Usern</span></div>
+        </div>
+        <div>
+          <div class="foerd-amount">100.000 EUR</div>
+          <div class="foerd-type">Nicht verwässernd</div>
+        </div>
+      </div>
+
+      <div class="foerd-card">
+        <div>
+          <div class="foerd-name">FFG Basisprogramm</div>
+          <div class="foerd-org">Forschungsförderungsgesellschaft</div>
+          <div class="foerd-desc">Förderung für Forschungs- und Entwicklungsprojekte. KI-Entwicklung, Scraping-Pipeline und Agenten-Architektur sind förderrelevant als technische Innovation.</div>
+          <div class="foerd-timing"><span>Parallel zu aws</span></div>
+        </div>
+        <div>
+          <div class="foerd-amount">bis 200.000 EUR</div>
+          <div class="foerd-type">Teilweise rückzahlbar</div>
+        </div>
+      </div>
+
+      <div class="foerd-card">
+        <div>
+          <div class="foerd-name">WKO Gründerservice Wien</div>
+          <div class="foerd-org">Wirtschaftskammer Wien</div>
+          <div class="foerd-desc">Kostenlose Erstberatung, Netzwerk zu Business Angels und Investoren im DACH-Raum. Nicht direkt Geld, aber der schnellste Weg zu den richtigen Kontakten für Angel-Investment.</div>
+          <div class="foerd-timing"><span>Sofort — kostenlos</span></div>
+        </div>
+        <div>
+          <div class="foerd-amount">Netzwerk</div>
+          <div class="foerd-type">Beratung &amp; Kontakte</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:1rem; background:var(--bg);">
+      <h3 style="margin-bottom:0.75rem;">Empfohlene Reihenfolge</h3>
+      <ul class="clean">
+        <li><strong>Jetzt:</strong> Gespräch mit Startup-Kontakt, Feedback einholen</li>
+        <li><strong>Woche 1–2:</strong> WKO Gründerservice Erstberatung buchen (kostenlos)</li>
+        <li><strong>Monat 1:</strong> Gewerbeanmeldung Wien (ca. 100 EUR)</li>
+        <li><strong>Monat 1–2:</strong> Gründungsstipendium Wien beantragen</li>
+        <li><strong>Monat 2:</strong> aws Gründungsbonus beantragen</li>
+        <li><strong>Monat 3:</strong> aws Erstberatung Pre-Seed (nach ersten Beta-Usern)</li>
+        <li><strong>Parallel:</strong> FFG Basisprogramm prüfen für F&amp;E-Anteil</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- PITCH -->
+  <div class="section" id="pitch">
+    <div class="eyebrow">Der Pitch</div>
+    <h2>Warum jetzt, warum hier, warum wir</h2>
+
+    <div class="pitch-hook">"Jeder Haushalt hat 20 Geräte. Niemand liest die Anleitung. Wir machen das Problem unsichtbar."</div>
+
+    <div class="pitch-points">
+      <div class="pitch-point">
+        <div class="pitch-point-num">01</div>
+        <div class="pitch-point-title">Das Timing stimmt</div>
+        <div class="pitch-point-body">Generative KI ist jetzt gut genug für quellenbasierte, gerätespezifische Antworten. Vor 2 Jahren war das technisch nicht möglich. In 3 Jahren machen es die Hersteller selbst.</div>
+      </div>
+      <div class="pitch-point">
+        <div class="pitch-point-num">02</div>
+        <div class="pitch-point-title">Der Markt ist leer</div>
+        <div class="pitch-point-body">Centriq existiert seit Jahren und hat nie Deutsch gebaut. Das ist kein Zufall — der DACH-Markt braucht eine lokale Lösung mit lokalen Rechtskenntnissen.</div>
+      </div>
+      <div class="pitch-point">
+        <div class="pitch-point-num">03</div>
+        <div class="pitch-point-title">Der Vermieter-Markt ist der eigentliche Play</div>
+        <div class="pitch-point-body">Ein Vermieter mit 50 Wohnungen und 500 Geräten zahlt gerne 9,99 EUR/Monat. Das ist 100x mehr Wert als ein Privat-User. Und Hersteller-Apps werden diesen Markt nie bedienen.</div>
+      </div>
+      <div class="pitch-point">
+        <div class="pitch-point-num">04</div>
+        <div class="pitch-point-title">Das eigentliche Asset ist die Datenbank</div>
+        <div class="pitch-point-body">Nach 3 Jahren haben wir die vollständigste strukturierte Wissensdatenbank für Haushaltsgeräte in Europa. Das lässt sich lizenzieren, verkaufen oder als B2B-API vermarkten — unabhängig vom Consumer-Produkt.</div>
+      </div>
+    </div>
+
+      <div class="pitch-point" style="grid-column: 1 / -1; background: var(--teal-pale); border-color: var(--teal-light);">
+        <div class="pitch-point-num" style="color: var(--teal);">05</div>
+        <div class="pitch-point-title">Der vollständige Lebenszyklus ist der Moat</div>
+        <div class="pitch-point-body">Kaufen, Nutzen, Verkaufen, Ersetzen — alles in einer App. Kein Mitbewerber weltweit deckt alle vier Phasen ab. Das schafft Lock-in ohne Zwang: User bleiben weil die App ihren Alltag kennt.</div>
+      </div>
+    </div>
+
+    <div class="pitch-block">
+      <h3>Was wir suchen</h3>
+      <p>150.000 EUR Pre-Seed Investment für 18 Monate Runway. Davon: 48K EUR Entwicklung, 13K EUR Marketing, 8K EUR App Store, 30K EUR Lebensunterhalt Gründer, 20K EUR Buffer, 31K EUR Infrastruktur &amp; Betrieb. Break-even bei Monat 24. ARR Jahr 3 konservativ 500.000 EUR.</p>
+    </div>
+
+    <h3 style="margin-top:2rem; margin-bottom:1rem;">Der Exit</h3>
+    <div class="grid-3">
+      <div class="card">
+        <h3 style="font-size:14px;">Acquisition</h3>
+        <p style="font-size:13px; margin-top:6px;">PropTech-Player, Versicherungen oder Gerätehersteller. 10.000 zahlende User + Datenbank = attraktives Ziel.</p>
+      </div>
+      <div class="card">
+        <h3 style="font-size:14px;">Series A</h3>
+        <p style="font-size:13px; margin-top:6px;">Bei ARR 500K EUR und validiertem Vermieter-B2B-Modell. Europa-Expansion als Growth Story.</p>
+      </div>
+      <div class="card">
+        <h3 style="font-size:14px;">Lizenzierung</h3>
+        <p style="font-size:13px; margin-top:6px;">Die Gerätedatenbank als eigenständiges Asset an Hersteller, Versicherungen oder Plattformen lizenzieren.</p>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<footer>
+  <strong>Alex Hohenthaner</strong> &nbsp;·&nbsp; <a href="file:///cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="600b120117010e194e17051202150e0720070d01090c4e030f0d">[email&nbsp;protected]</a> &nbsp;·&nbsp; linkedin.com/in/alexhohenthaner &nbsp;·&nbsp; Wien, 2026<br>
+  <span style="margin-top:6px; display:block;">Haushalt-Ge</span></footer></div></body></html>
