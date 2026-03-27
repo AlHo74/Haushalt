@@ -441,7 +441,11 @@ function buildTSHtml() {
 // ── Step 1: Kategorie bestätigen ──────────────────────────────────────────────
 function buildTSStep1() {
   const kat = tsWizard.kategorie;
+  const hintBanner = (form.photoNextHint)
+    ? `<div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:10px;padding:10px 12px;font-size:12px;color:#92400e;margin-bottom:16px;">💡 KI-Tipp: ${form.photoNextHint}</div>`
+    : '';
   return `
+    ${hintBanner}
     <div style="text-align:center;padding:1rem 0 1.5rem;">
       <div style="font-size:48px;margin-bottom:10px;">${TS_ICONS[kat] || '🔌'}</div>
       <div style="font-size:20px;font-weight:800;color:var(--text);margin-bottom:6px;">Kategorie bestätigen</div>
