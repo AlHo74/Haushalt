@@ -35,6 +35,50 @@ let form = {
 let tsWizard = null;
 // { step:1-4, kategorie:string, tsDataUrl:null, tsPhoto:null, tsMime:null, tsResult:null, tsLoading:false, tsError:null }
 
+// ─── Device recognition prompt ───────────────────────────────────────────────
+const DEVICE_RECOGNITION_PROMPT = `
+Du bist ein Experte für Haushaltsgeräte mit Fokus auf DACH-Markt (Bosch, Miele, Siemens, AEG, Gorenje, Electrolux, Bauknecht, Whirlpool, Philips, Indesit, Zanussi, Liebherr, Neff, Gaggenau u.a.).
+
+Analysiere dieses Foto eines Haushaltsgeräts in vier Schritten:
+
+SCHRITT 1 — SICHTBARER TEXT
+Extrahiere JEDEN sichtbaren Text auf dem Gerät: Logos, Modellnummern, Seriennummern, Zulassungsnummern, Energielabels, gedruckte Beschriftungen. Auch teilweise lesbare Texte angeben.
+
+SCHRITT 2 — VISUELLE MERKMALE
+- Gerätekategorie (Waschmaschine, Kühlschrank, Herd, Kaffeemaschine, Geschirrspüler etc.)
+- Hersteller-Logo oder Markenschriftzug (auch wenn verblasst)
+- Ungefähre Baujahr-Ära (z.B. "1980er", "1990er", "2000er") anhand Design-Sprache, Bedienelemente, Materialien
+- Raumzuordnung: Küche / Badezimmer / Wohnzimmer / Schlafzimmer / Keller / Garage / Sonstiges
+
+SCHRITT 3 — MODELL-KANDIDATEN
+Liste 1–3 konkrete Modell-Kandidaten mit:
+- Hersteller
+- Modellreihe (falls erkennbar)
+- Geschätzte Jahreszahl
+- Konfidenz: HIGH / MEDIUM / LOW
+Wähle den besten Kandidaten als Hauptergebnis (brand + model).
+
+SCHRITT 4 — EMPFEHLUNG FÜR NÄCHSTEN SCHRITT
+Falls confidence LOW oder model fehlt: Welche spezifische Stelle am Gerät soll der User als nächstes fotografieren? (Typenschild hinten/seitlich, Innentür, Bedienfeld-Nähe)
+
+Antworte NUR als gültiges JSON-Objekt:
+{
+  "extracted_text": ["jeder erkannte Text als eigener Eintrag"],
+  "category": "Gerätekategorie",
+  "name": "Gerätename auf Deutsch (z.B. Waschmaschine Bosch Serie 4)",
+  "brand": "Hersteller oder null",
+  "model": "Modellnummer oder null",
+  "confidence": "high|medium|low",
+  "room_suggestion": "Küche|Badezimmer|Wohnzimmer|Schlafzimmer|Keller|Garage|Sonstiges",
+  "era": "z.B. 1990er oder null",
+  "candidates": [
+    {"manufacturer": "string", "model_series": "string", "year_estimate": "string", "confidence": "HIGH|MEDIUM|LOW"}
+  ],
+  "next_photo_suggestion": "Konkreter Hinweis für das nächste Foto oder null",
+  "can_proceed": true
+}
+can_proceed ist true wenn Marke UND Modellnummer sicher erkannt wurden, sonst false.`.trim();
+
 // ─── TS categories ────────────────────────────────────────────────────────────
 const TS_CATEGORIES = [
   'Waschmaschine','Wäschetrockner','Geschirrspüler','Kühlschrank',
@@ -264,9 +308,7 @@ async function handlePhotoSelect(e) {
 
     const result = await analyzePhoto(base64, mime);
     const room   = result.room_suggestion ? (roomSuggestionToId(result.room_suggestion) || cur.room) : cur.room;
-    const modelMissing    = !result.model || result.model.toLowerCase().includes('unbekannt');
-    const lowConfidence   = result.confidence === 'low';
-    const shouldShowBanner = modelMissing || lowConfidence;
+    const shouldShowBanner = !result.can_proceed;
 
     form = {
       ...form,
@@ -277,18 +319,18 @@ async function handlePhotoSelect(e) {
       scanLoading: false,
       scanError:   null,
       recognitionConfidence: result.confidence,
-      showTSBanner: shouldShowBanner,
-      // Neue Felder aus erweitertem Prompt
-      photoEra:       result.era              || null,
-      extractedText:  result.extracted_text   || [],
+      showTSBanner:   shouldShowBanner,
+      photoEra:       result.era                   || null,
+      extractedText:  result.extracted_text        || [],
       photoNextHint:  result.next_photo_suggestion || null,
+      photoCandidates: result.candidates           || [],
     };
     renderPage();
 
     if (!shouldShowBanner) {
       showToast('Gerät erkannt ✓');
     } else {
-      // Auto-open TS wizard after 1.5s if model not found
+      // Auto-open TS wizard after 1.5s if can_proceed is false
       // next_photo_suggestion wird im TS-Wizard als erster Hinweis angezeigt
       setTimeout(() => openTSWizard(), 1500);
     }
@@ -301,41 +343,10 @@ async function handlePhotoSelect(e) {
 async function analyzePhoto(base64, mime) {
   const data = await callAnthropic({
     model: 'claude-sonnet-4-20250514',
-    max_tokens: 800,
+    max_tokens: 900,
     messages: [{ role: 'user', content: [
       { type: 'image', source: { type: 'base64', media_type: mime, data: base64 } },
-      { type: 'text', text: `Du bist ein Experte für Haushaltsgeräte im DACH-Markt (Bosch, Siemens, Miele, AEG, Gorenje, Electrolux, Bauknecht, Whirlpool, Philips, Indesit, Zanussi, Liebherr, Neff, Gaggenau u.a.).
-
-Analysiere dieses Foto eines Haushaltsgeräts in vier Schritten:
-
-SCHRITT 1 — SICHTBARER TEXT
-Extrahiere JEDEN erkennbaren Text auf dem Gerät: Logos, Modellnummern, Seriennummern, E-Nummern, Zulassungsnummern, Energielabels, gedruckte Beschriftungen. Auch teilweise lesbare oder verblasste Texte angeben.
-
-SCHRITT 2 — VISUELLE MERKMALE
-- Gerätekategorie (Waschmaschine, Kühlschrank, Herd, Kaffeemaschine, Geschirrspüler etc.)
-- Hersteller-Logo oder Markenschriftzug (auch wenn verblasst oder alt)
-- Baujahr-Ära anhand Design, Bedienelemente, Materialien, Farben (z.B. "1970er", "1980er", "1990er", "2000er", "2010er", "2020er")
-- Raumzuordnung: Küche / Badezimmer / Wohnzimmer / Schlafzimmer / Keller / Garage / Sonstiges
-
-SCHRITT 3 — BEWERTUNG
-confidence=high: Marke UND vollständige Modellnummer klar erkennbar.
-confidence=medium: Marke erkennbar, Modellnummer fehlt oder unsicher.
-confidence=low: Gerätekategorie erkennbar, aber Marke/Modell unklar.
-
-SCHRITT 4 — NÄCHSTER SCHRITT (nur bei confidence=low oder medium ohne Modell)
-Gib einen konkreten Hinweis welche Stelle am Gerät als nächstes fotografiert werden soll, um die Erkennung zu verbessern (z.B. "Typenschild an der Geräterückseite", "Innentür links unten", "Unterseite des Geräts anheben").
-
-Antworte NUR als gültiges JSON-Objekt:
-{
-  "name": "Gerätename auf Deutsch (z.B. Waschmaschine Bosch Serie 4)",
-  "brand": "Hersteller oder null",
-  "model": "Modellnummer oder null",
-  "confidence": "high|medium|low",
-  "room_suggestion": "Küche|Badezimmer|Wohnzimmer|Schlafzimmer|Keller|Garage|Sonstiges",
-  "era": "z.B. 1990er oder null",
-  "extracted_text": ["jeder erkannte Text als eigener Eintrag"],
-  "next_photo_suggestion": "Konkreter Hinweis für das nächste Foto oder null"
-}` },
+      { type: 'text', text: DEVICE_RECOGNITION_PROMPT },
     ]}],
   });
   const text  = data.content[0].text;
