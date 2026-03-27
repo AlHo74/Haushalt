@@ -8,6 +8,68 @@ const AGENT_DEFS = [
   { key: 'energy',       label: 'Energieeffizienz',    icon: '⚡' },
 ];
 
+// ─── Agent 1: Manufacturer URL patterns (verified, curated) ───────────────────
+const HERSTELLER_URLS = {
+  'Siemens': {
+    manual_portal: 'https://www.siemens-home.bsh-group.com/de/kundendienst/hilfe/bedienungsanleitungen',
+    search_query:  'site:siemens-home.bsh-group.com [MODEL] Gebrauchsanleitung',
+  },
+  'Bosch': {
+    manual_portal: 'https://www.bosch-home.com/at/service/gebrauchsanleitungen.html',
+    search_query:  'site:bosch-home.com [MODEL] Gebrauchsanleitung',
+  },
+  'Miele': {
+    manual_portal: 'https://www.miele.at/f/de/gebrauchsanweisungen-5231.aspx',
+    search_query:  'site:miele.at [MODEL] Gebrauchsanweisung',
+  },
+  'AEG': {
+    manual_portal: 'https://www.aeg.de/support/user-manuals/',
+    search_query:  'site:aeg.de [MODEL] Bedienungsanleitung',
+  },
+  'Electrolux': {
+    manual_portal: 'https://www.electrolux.at/support/manuals/',
+    search_query:  'site:electrolux.at [MODEL] Bedienungsanleitung',
+  },
+  'Samsung': {
+    manual_portal: 'https://www.samsung.com/at/support/',
+    search_query:  'site:samsung.com [MODEL] Bedienungsanleitung',
+  },
+  'LG': {
+    manual_portal: 'https://www.lg.com/at/support/manuals/',
+    search_query:  'site:lg.com [MODEL] Bedienungsanleitung',
+  },
+  'Whirlpool': {
+    manual_portal: 'https://www.whirlpool.at/service-und-support/bedienungsanleitung',
+    search_query:  'site:whirlpool.at [MODEL] Bedienungsanleitung',
+  },
+  'Bauknecht': {
+    manual_portal: 'https://www.bauknecht.eu/de-AT/service/bedienungsanleitungen.html',
+    search_query:  'site:bauknecht.eu [MODEL] Bedienungsanleitung',
+  },
+  'Philips': {
+    manual_portal: 'https://www.philips.at/service/support',
+    search_query:  'site:philips.at [MODEL] Bedienungsanleitung',
+  },
+};
+
+const AGGREGATOR_URLS = [
+  {
+    name:   'ManualsLib',
+    search: 'site:manualslib.de [BRAND] [MODEL] Gebrauchsanleitung',
+    trust:  'medium',
+  },
+  {
+    name:   'bedienungsanleitu.ng',
+    search: 'site:bedienungsanleitu.ng [BRAND] [MODEL]',
+    trust:  'medium',
+  },
+  {
+    name:   'devicemanuals.eu',
+    search: 'site:devicemanuals.eu [BRAND] [MODEL]',
+    trust:  'medium',
+  },
+];
+
 // ─── Grounding rule (appended to every agent system prompt) ───────────────────
 const GROUNDING_RULE = `
 Return ONLY information you are confident is accurate for this specific device.
@@ -28,6 +90,37 @@ async function callAgentAPI(systemPrompt, userMessage) {
   const match = text.match(/\{[\s\S]*\}/);
   if (!match) throw new Error('Keine JSON-Antwort erhalten');
   return JSON.parse(match[0]);
+}
+
+// ─── Agent 1: Verification layer ──────────────────────────────────────────────
+function verifyManualResult(result, device) {
+  // Rule 1: low confidence → reject
+  if (result.confidence === 'low') {
+    return { verified: false, reason: 'low_confidence' };
+  }
+
+  // Rule 2: model match must be confirmed
+  if (!result.model_match_confirmed) {
+    return { verified: false, reason: 'model_not_confirmed' };
+  }
+
+  // Rule 3: URL sanity check
+  // If a model is known, the URL MUST contain the model slug (prevents wrong-model URLs).
+  // If no model, fall back to requiring at least the brand name in the URL.
+  if (result.manual_url) {
+    const url       = result.manual_url.toLowerCase();
+    const modelSlug = (device.modell || '').replace(/[^a-z0-9]/gi, '').toLowerCase();
+    const brand     = (device.marke  || '').toLowerCase();
+    if (modelSlug) {
+      if (!url.includes(modelSlug)) {
+        return { verified: false, reason: 'url_mismatch' };
+      }
+    } else if (brand && !url.includes(brand)) {
+      return { verified: false, reason: 'url_mismatch' };
+    }
+  }
+
+  return { verified: true };
 }
 
 // ─── Progress helpers ─────────────────────────────────────────────────────────
@@ -51,47 +144,108 @@ function initAgentStatus(deviceId) {
   saveDevices();
 }
 
-// ─── Agent 1: Bedienungsanleitung ────────────────────────────────────────────
-// Link-based only — never processes images, never invents URLs.
-// Search waterfall: manualslib.de → bedienungsanleitu.ng → general web
+// ─── Agent 1: Bedienungsanleitung (3-phase waterfall + verification) ──────────
 async function runAgent1(device) {
-  const { name, marke: brand, modell: model } = device;
+  const brand    = device.marke  || '';
+  const model    = device.modell || '';
+  const name     = device.name   || '';
+  const eNumber  = device._nameplate?.e_number || '';
+  const category = device.category || '';
 
+  // Phase 1: inject manufacturer portal as grounding context (no CORS fetch)
+  const mfrEntry = HERSTELLER_URLS[brand] || null;
+
+  // Phase 2: build aggregator search hints for the AI
+  const aggregatorHints = AGGREGATOR_URLS.map(a => {
+    const q = a.search.replace('[BRAND]', brand).replace('[MODEL]', model);
+    return `${a.name}: search "${q}"`;
+  }).join('\n');
+
+  const mfrContext = mfrEntry
+    ? `Manufacturer portal (use as grounding): ${mfrEntry.manual_portal}
+Manufacturer site search: ${mfrEntry.search_query.replace('[MODEL]', model)}`
+    : `Brand "${brand}" is NOT in the verified manufacturer list. Skip Phase 1. Go directly to aggregators.`;
+
+  // Phase 3: single AI call with strict prompt
   const system = `You are Agent 1 of Haushalt-Genie.
-Find the Bedienungsanleitung (user manual) for the given household device.
-Search in this priority order:
-1. manualslib.de — most reliable. URL pattern: https://www.manualslib.de/brand/BRAND/
-2. bedienungsanleitu.ng — fallback. URL pattern: https://www.bedienungsanleitu.ng/BRAND/MODEL/
-3. General web search as last resort.
-Never invent or guess URLs. Only include URLs you are highly confident exist.
-Return this exact JSON structure:
+Find the official manual URL for the given device.
+
+STRICT RULES:
+1. Only return URLs you are CERTAIN exist for this EXACT model — not a similar model.
+2. If you are not 100% certain the URL leads to the correct manual for THIS specific model, set found: false.
+3. Never construct URLs by guessing — only use URLs from known, verified patterns.
+4. The model number in the URL or page MUST match the device model exactly.
+5. If the brand is not in your training data with confirmed manual URL patterns, set found: false.
+
+${GROUNDING_RULE}
+
+Return ONLY this JSON:
 {
   "found": true,
   "confidence": "high|medium|low",
-  "source": "manualslib|bedienungsanleitu|other|not_found",
+  "source_phase": 1,
+  "brand_confirmed": true,
+  "model_match_confirmed": true,
   "manual_url": "https://...",
-  "pdf_url": null,
+  "source_name": "ManualsLib",
   "pages": null,
-  "key_specs": {
-    "capacity": null,
-    "energy_class": null,
-    "special_features": []
-  },
+  "key_specs": { "capacity": null, "energy_class": null, "special_features": [] },
   "programs": [],
-  "quick_start_tips": [
-    "Tip 1 in German",
-    "Tip 2 in German",
-    "Tip 3 in German"
-  ],
-  "disclaimer_level": 1
-}
-If no confident URL exists, set found: false and source: "not_found".`;
+  "quick_start_tips": [],
+  "warning": null
+}`;
 
-  const user = `Find the Bedienungsanleitung for: ${brand} ${model} (${name}).
-Construct and verify the manualslib.de URL for brand "${brand}" first.
-Also provide 3 quick_start_tips in German based on your knowledge of this device model.`;
+  const user = `Find manual for:
+Brand: ${brand}
+Model: ${model}${eNumber ? `\nE-Number: ${eNumber}` : ''}
+Name: ${name}${category ? `\nCategory: ${category}` : ''}
 
-  return callAgentAPI(system, user);
+${mfrContext}
+
+Aggregator fallback (if manufacturer search fails):
+${aggregatorHints}
+
+IMPORTANT: Only set found:true if you are certain the URL leads to THIS EXACT device.
+Also provide 3 quick_start_tips in German based on your knowledge of this model.`;
+
+  let result;
+  try {
+    result = await callAgentAPI(system, user);
+  } catch (err) {
+    result = {
+      found: false, confidence: 'low', source_phase: 3,
+      brand_confirmed: false, model_match_confirmed: false,
+      manual_url: null, source_name: null,
+      key_specs: {}, programs: [], quick_start_tips: [],
+      warning: err.message,
+    };
+  }
+
+  // Verification layer
+  const verification = result.found
+    ? verifyManualResult(result, device)
+    : { verified: false, reason: 'not_found' };
+
+  result._verified      = verification.verified;
+  result._verify_reason = verification.reason || null;
+  result._mfr_portal    = mfrEntry?.manual_portal || null;
+  result._brand_known   = !!mfrEntry;
+
+  // Search log (Phase 2 TODO: send to Supabase)
+  const d = state.devices.find(x => x.id === device.id);
+  if (d) {
+    d.manual_search_log = {
+      timestamp:  Date.now(),
+      brand,
+      model,
+      result:     result._verified ? 'found' : (result.found ? 'unverified' : 'not_found'),
+      source:     result.source_name || null,
+      confidence: result.confidence  || null,
+    };
+    saveDevices();
+  }
+
+  return result;
 }
 
 // ─── Agent 2: FAQs ───────────────────────────────────────────────────────────

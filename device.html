@@ -254,38 +254,63 @@ function renderManualTab(d) {
 
   if (typeof m === 'string') return `<div style="font-size:14px;color:var(--text);line-height:1.75;white-space:pre-wrap;" class="fade-in">${escHtml(m)}</div>`;
 
-  if (!m.found) {
-    const search = `https://www.google.com/search?q=${encodeURIComponent(`${d.marke||''} ${d.modell||''} Bedienungsanleitung PDF`.trim())}`;
+  // Helper buttons reused in fallback state
+  const mfrPortal     = m._mfr_portal;
+  const manualsSearch = `https://www.manualslib.de/search.php?q=${encodeURIComponent((d.marke||'') + ' ' + (d.modell||''))}`;
+  const helperButtons = `
+    <div style="display:flex;flex-direction:column;gap:8px;margin-top:12px;">
+      ${mfrPortal ? `
+        <a href="${escHtml(mfrPortal)}" target="_blank" rel="noopener"
+          style="display:flex;align-items:center;justify-content:center;gap:8px;padding:11px;border:1.5px solid var(--primary);color:var(--primary);border-radius:10px;font-weight:600;font-size:14px;text-decoration:none;">
+          🏭 Direkt beim Hersteller suchen
+        </a>` : ''}
+      <a href="${escHtml(manualsSearch)}" target="_blank" rel="noopener"
+        style="display:flex;align-items:center;justify-content:center;gap:8px;padding:11px;border:1.5px solid var(--border);color:var(--text);border-radius:10px;font-weight:600;font-size:14px;text-decoration:none;">
+        🔍 Auf ManualsLib suchen
+      </a>
+    </div>`;
+
+  // Not found OR failed verification → amber fallback banner
+  if (!m.found || !m._verified) {
+    const reasonText = {
+      low_confidence:      'Die gefundene Anleitung hat zu geringe Konfidenz.',
+      model_not_confirmed: 'Das Modell konnte nicht sicher bestätigt werden.',
+      url_mismatch:        'Die URL stimmt nicht mit dem Modell überein.',
+    }[m._verify_reason] || null;
+
     return `
       <div class="fade-in">
         <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:12px;padding:14px 16px;margin-bottom:16px;">
-          <p style="font-size:14px;font-weight:600;color:#92400e;margin:0 0 4px;">⚠️ Keine Anleitung gefunden</p>
-          <p style="font-size:13px;color:#b45309;margin:0;">Für <strong>${escHtml(d.marke)} ${escHtml(d.modell)}</strong> konnte automatisch keine Anleitung gefunden werden.</p>
+          <p style="font-size:14px;font-weight:600;color:#92400e;margin:0 0 4px;">⚠️ Wir konnten keine gesicherte Anleitung finden.</p>
+          ${reasonText ? `<p style="font-size:13px;color:#b45309;margin:4px 0 0;">${escHtml(reasonText)}</p>` : ''}
+          <p style="font-size:13px;color:#b45309;margin:4px 0 0;">Gib die genaue Modellnummer ein, um die Suche zu verbessern.</p>
         </div>
-        <a href="${search}" target="_blank" rel="noopener"
-          style="display:flex;align-items:center;justify-content:center;gap:8px;padding:11px;background:var(--primary);color:#fff;border-radius:10px;font-weight:600;font-size:14px;text-decoration:none;">
-          🔍 Manuell suchen
-        </a>
+        ${!m._brand_known ? `<p style="font-size:12px;color:var(--muted);margin:0 0 10px;">Für diese Marke haben wir keinen direkten Hersteller-Zugang. Wir suchen über Aggregatoren.</p>` : ''}
+        ${helperButtons}
         ${disclaimerBar(1)}
       </div>`;
   }
 
-  const specs   = m.key_specs || {};
-  const pills   = [specs.capacity && `Kapazität: ${specs.capacity}`, specs.energy_class && `Energieklasse: ${specs.energy_class}`, ...(specs.special_features||[])].filter(Boolean);
-  const programs = m.programs || [];
+  // Verified result → show manual link
+  const specs    = m.key_specs || {};
+  const pills    = [
+    specs.capacity     && `Kapazität: ${specs.capacity}`,
+    specs.energy_class && `Energieklasse: ${specs.energy_class}`,
+    ...(specs.special_features || []),
+  ].filter(Boolean);
+  const programs = m.programs         || [];
   const tips     = m.quick_start_tips || [];
 
   return `
     <div class="fade-in">
       <a href="${escHtml(m.manual_url)}" target="_blank" rel="noopener"
-        style="display:flex;align-items:center;justify-content:center;gap:8px;padding:13px;background:var(--primary);color:#fff;border-radius:12px;font-weight:700;font-size:15px;text-decoration:none;margin-bottom:${m.pdf_url?'10px':'16px'};">
-        📖 Anleitung öffnen
+        style="display:flex;align-items:center;justify-content:center;gap:8px;padding:13px;background:var(--primary);color:#fff;border-radius:12px;font-weight:700;font-size:15px;text-decoration:none;margin-bottom:16px;">
+        📋 Anleitung öffnen
       </a>
-      ${m.pdf_url ? `<a href="${escHtml(m.pdf_url)}" target="_blank" rel="noopener" style="display:flex;align-items:center;justify-content:center;gap:8px;padding:10px;border:1.5px solid var(--primary);color:var(--primary);border-radius:12px;font-weight:600;font-size:14px;text-decoration:none;margin-bottom:16px;">⬇️ PDF herunterladen</a>` : ''}
+      ${m.source_name ? `<p style="font-size:12px;color:var(--muted);margin:0 0 12px;">Quelle: ${escHtml(m.source_name)}${m.confidence ? ' · Konfidenz: ' + escHtml(m.confidence) : ''}</p>` : ''}
       ${pills.length ? `<div style="margin-bottom:14px;"><p style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 8px;">Technische Daten</p><div style="display:flex;flex-wrap:wrap;gap:6px;">${pills.map(s=>`<span style="font-size:12px;font-weight:600;padding:4px 10px;border-radius:20px;background:rgba(76,175,130,0.12);color:var(--primary);">${escHtml(s)}</span>`).join('')}</div></div>` : ''}
       ${programs.length ? `<div style="margin-bottom:14px;"><p style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 8px;">Programme</p><div style="display:flex;flex-wrap:wrap;gap:6px;">${programs.map(p=>`<span style="font-size:12px;padding:4px 10px;border-radius:20px;background:var(--border);color:var(--text);">${escHtml(p)}</span>`).join('')}</div></div>` : ''}
       ${tips.length ? `<div style="margin-bottom:14px;"><p style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 8px;">Wichtige Hinweise</p><ol style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:8px;">${tips.map(t=>`<li style="font-size:14px;color:var(--text);line-height:1.6;">${escHtml(t)}</li>`).join('')}</ol></div>` : ''}
-      ${m.source||m.confidence ? `<p style="font-size:12px;color:var(--muted);margin:0 0 8px;">Quelle: ${escHtml(m.source||'Online')} · Konfidenz: ${escHtml(m.confidence||'')}</p>` : ''}
       ${disclaimerBar(1)}
     </div>`;
 }
