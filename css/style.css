@@ -19,10 +19,13 @@ body { background: var(--bg); }
 .btn-primary:hover     { background-color: #0f766e; }
 
 /* ─── Animations ─────────────────────────────────────────────────────────────── */
-@keyframes blink   { 0%, 80%, 100% { opacity: 0.2; } 40% { opacity: 1; } }
-@keyframes spin    { to { transform: rotate(360deg); } }
-@keyframes fadeIn  { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
-@keyframes pulse   { 0%,100% { opacity:1; } 50% { opacity:.45; } }
+@keyframes blink     { 0%, 80%, 100% { opacity: 0.2; } 40% { opacity: 1; } }
+@keyframes spin      { to { transform: rotate(360deg); } }
+@keyframes fadeIn    { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
+@keyframes pulse     { 0%,100% { opacity:1; } 50% { opacity:.45; } }
+@keyframes popIn     { 0% { transform:scale(0); opacity:0; } 70% { transform:scale(1.2); } 100% { transform:scale(1); opacity:1; } }
+@keyframes drawCheck { to { stroke-dashoffset: 0; } }
+@keyframes dotPulse  { 0%, 80%, 100% { opacity: 0; } 40% { opacity: 1; } }
 
 .spinner     { animation: spin    0.8s  linear     infinite; }
 .fade-in     { animation: fadeIn  0.3s  ease        both; }
@@ -31,6 +34,15 @@ body { background: var(--bg); }
 .typing-dot              { animation: blink 1.2s infinite; }
 .typing-dot:nth-child(2) { animation-delay: 0.2s; }
 .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+/* ─── Agents screen ──────────────────────────────────────────────────────────── */
+.agent-card    { transition: border-left-color 0.3s ease, background-color 0.3s ease; }
+.agent-spinner { width:20px; height:20px; border:2px solid #E1F5EE; border-top-color:#1B5E45; border-radius:50%; animation:spin 0.8s linear infinite; }
+.agent-check   { animation: popIn 0.3s ease-out forwards; }
+.completion-check { stroke-dasharray:100; stroke-dashoffset:100; animation:drawCheck 0.6s ease-out 0.2s forwards; }
+.dot-1 { animation: dotPulse 1.4s ease-in-out 0s   infinite; }
+.dot-2 { animation: dotPulse 1.4s ease-in-out 0.2s infinite; }
+.dot-3 { animation: dotPulse 1.4s ease-in-out 0.4s infinite; }
 
 /* ─── Tab bar (horizontal scroll, hidden scrollbar) ─────────────────────────── */
 .tab-bar                    { overflow-x: auto; scrollbar-width: none; }

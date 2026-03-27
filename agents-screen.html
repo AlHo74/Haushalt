@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Informationen werden gesammelt – Haushalt-Genie</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body style="background:var(--bg);min-height:100vh;font-family:var(--font,system-ui,sans-serif);">
+
+<div id="app" style="max-width:480px;margin:0 auto;padding:2rem 1.25rem calc(2rem + env(safe-area-inset-bottom));"></div>
+
+<script src="js/app.js"></script>
+<script src="js/agents.js"></script>
+<script>
+// ─── Boot ─────────────────────────────────────────────────────────────────────
+const deviceId = new URLSearchParams(window.location.search).get('id');
+const device   = getDevice(deviceId);
+
+if (!device) { window.location.href = 'index.html'; }
+
+// ─── State ────────────────────────────────────────────────────────────────────
+// agentState[key] = 'pending' | 'running' | 'done' | 'error'
+const agentState = {};
+AGENT_DEFS.forEach(a => { agentState[a.key] = 'pending'; });
+let completedCount = 0;
+
+// ─── Render initial page ──────────────────────────────────────────────────────
+function renderInitial() {
+  const hasPhoto = device.photo;
+  const photoEl  = hasPhoto
+    ? `<img src="data:${device.photoMime || 'image/jpeg'};base64,${device.photo}"
+            style="width:60px;height:60px;border-radius:50%;object-fit:cover;box-shadow:0 2px 8px rgba(0,0,0,0.15);">`
+    : `<div style="width:60px;height:60px;border-radius:50%;background:var(--primary);display:flex;align-items:center;justify-content:center;font-size:26px;">
+         ${getDevicePlaceholderImg(device.name).startsWith('http')
+           ? `<img src="${getDevicePlaceholderImg(device.name)}" style="width:60px;height:60px;border-radius:50%;object-fit:cover;">`
+           : '🏠'}
+       </div>`;
+
+  document.getElementById('app').innerHTML = `
+
+    <!-- Device info -->
+    <div style="text-align:center;padding:2rem 0 1.5rem;">
+      <div style="display:flex;justify-content:center;margin-bottom:12px;">
+        ${photoEl}
+      </div>
+      <div style="font-size:20px;font-weight:800;color:var(--text);">${escHtml(device.name)}</div>
+      <div style="font-size:13px;color:var(--muted);margin-top:2px;">${escHtml(device.marke)} · ${escHtml(device.modell)}</div>
+      <div id="subtitle" style="margin-top:14px;font-size:14px;color:var(--muted);display:flex;align-items:center;justify-content:center;gap:0;">
+        Wir sammeln alle Informationen zu deinem Gerät
+        <span class="dot-1" style="display:inline-block;margin-left:1px;">.</span><span class="dot-2" style="display:inline-block;">.</span><span class="dot-3" style="display:inline-block;">.</span>
+      </div>
+    </div>
+
+    <!-- API key error banner (hidden by default) -->
+    <div id="apikey-error" style="display:none;background:#fef2f2;border:1px solid #fca5a5;border-radius:12px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:#991b1b;">
+      🔑 Kein API-Schlüssel gesetzt.
+      <a href="settings.html" style="color:var(--primary);font-weight:600;text-decoration:none;"> Jetzt in Einstellungen konfigurieren →</a>
+    </div>
+
+    <!-- Agent cards -->
+    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:24px;">
+      ${AGENT_DEFS.map(a => renderAgentCard(a, 'pending')).join('')}
+    </div>
+
+    <!-- Progress bar -->
+    <div style="margin-bottom:32px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <span id="progress-text" style="font-size:13px;color:var(--muted);">0 von 6 abgeschlossen</span>
+        <span id="progress-pct" style="font-size:13px;font-weight:600;color:var(--primary);">0%</span>
+      </div>
+      <div style="height:5px;background:#E8E8E4;border-radius:10px;overflow:hidden;">
+        <div id="progress-bar" style="height:100%;background:var(--primary);width:0%;border-radius:10px;transition:width 0.5s ease;"></div>
+      </div>
+    </div>
+
+    <!-- Completion section (hidden until done) -->
+    <div id="completion" style="display:none;text-align:center;animation:fadeIn 0.5s ease forwards;">
+      <div style="width:72px;height:72px;border-radius:50%;background:rgba(27,94,69,0.1);display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">
+        <svg width="40" height="40" viewBox="0 0 50 50" fill="none">
+          <circle cx="25" cy="25" r="22" stroke="#1B5E45" stroke-width="2.5" fill="none" opacity="0.2"/>
+          <path class="completion-check" d="M14 25 L22 33 L36 17"
+            stroke="#1B5E45" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"
+            fill="none"/>
+        </svg>
+      </div>
+      <div style="font-size:22px;font-weight:800;color:var(--text);margin-bottom:6px;">Dein Gerät ist bereit!</div>
+      <div style="font-size:15px;color:var(--primary);font-weight:600;margin-bottom:24px;">${escHtml(device.name)}</div>
+      <a id="goto-btn" href="device.html?id=${deviceId}"
+        style="display:block;background:var(--primary);color:#fff;border-radius:14px;padding:16px;font-size:16px;font-weight:700;text-decoration:none;text-align:center;animation:fadeIn 0.4s ease 0.2s both;">
+        Zum Gerät →
+      </a>
+    </div>
+
+    <!-- Skip link (shown after 3s) -->
+    <div id="skip-link" style="display:none;text-align:center;margin-top:16px;">
+      <a href="device.html?id=${deviceId}"
+        style="font-size:13px;color:var(--muted);text-decoration:none;">
+        Überspringen und später fortsetzen →
+      </a>
+    </div>`;
+}
+
+// ─── Card renderer ────────────────────────────────────────────────────────────
+function renderAgentCard(agentDef, status) {
+  const borderColor  = { pending:'#E8E8E4', running:'#4CAF82', done:'#1B5E45', error:'#fca5a5' }[status] || '#E8E8E4';
+  const iconOpacity  = status === 'pending' ? '0.4' : '1';
+  const statusText   = { pending:'Wartet...', running:'Sucht...', done:'Gefunden ✓', error:'Nicht gefunden' }[status] || 'Wartet...';
+  const textColor    = { pending:'var(--muted)', running:'var(--accent)', done:'#1B5E45', error:'#dc2626' }[status] || 'var(--muted)';
+  const indicator    = renderIndicator(status);
+
+  return `
+    <div id="card-${agentDef.key}" class="agent-card"
+      style="background:#fff;border-radius:12px;padding:1rem 1.25rem;display:flex;align-items:center;gap:14px;
+             border-left:3px solid ${borderColor};box-shadow:0 1px 3px rgba(0,0,0,0.06);transition:border-left-color 0.3s ease;">
+      <div style="width:40px;height:40px;border-radius:10px;background:var(--bg);display:flex;align-items:center;justify-content:center;font-size:20px;opacity:${iconOpacity};flex-shrink:0;transition:opacity 0.3s ease;">
+        ${agentDef.icon}
+      </div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:14px;font-weight:600;color:var(--text);">${agentDef.label}</div>
+        <div id="status-text-${agentDef.key}" style="font-size:12px;margin-top:2px;color:${textColor};transition:color 0.3s ease;">${statusText}</div>
+      </div>
+      <div id="indicator-${agentDef.key}">${indicator}</div>
+    </div>`;
+}
+
+function renderIndicator(status) {
+  if (status === 'running') {
+    return `<div class="agent-spinner"></div>`;
+  }
+  if (status === 'done') {
+    return `<div class="agent-check" style="width:22px;height:22px;border-radius:50%;background:#1B5E45;display:flex;align-items:center;justify-content:center;">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+    </div>`;
+  }
+  if (status === 'error') {
+    return `<div style="width:22px;height:22px;border-radius:50%;background:#fee2e2;display:flex;align-items:center;justify-content:center;">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="3" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </div>`;
+  }
+  // pending
+  return `<div style="width:10px;height:10px;border-radius:50%;background:#D1D5DB;flex-shrink:0;"></div>`;
+}
+
+// ─── DOM card update (no full re-render) ──────────────────────────────────────
+function updateAgentCard(key, status) {
+  agentState[key] = status;
+
+  const card         = document.getElementById(`card-${key}`);
+  const statusTextEl = document.getElementById(`status-text-${key}`);
+  const indicatorEl  = document.getElementById(`indicator-${key}`);
+  const iconEl       = card?.querySelector('div[style*="font-size:20px"]');
+  if (!card) return;
+
+  const borderColor = { pending:'#E8E8E4', running:'#4CAF82', done:'#1B5E45', error:'#fca5a5' }[status];
+  const statusText  = { pending:'Wartet...', running:'Sucht...', done:'Gefunden ✓', error:'Nicht gefunden' }[status];
+  const textColor   = { pending:'var(--muted)', running:'var(--accent)', done:'#1B5E45', error:'#dc2626' }[status];
+
+  card.style.borderLeftColor     = borderColor;
+  statusTextEl.textContent       = statusText;
+  statusTextEl.style.color       = textColor;
+  indicatorEl.innerHTML          = renderIndicator(status);
+  if (iconEl) iconEl.style.opacity = status === 'pending' ? '0.4' : '1';
+}
+
+// ─── Progress ─────────────────────────────────────────────────────────────────
+function updateProgress() {
+  completedCount = Object.values(agentState).filter(s => s === 'done' || s === 'error').length;
+  const pct = Math.round((completedCount / AGENT_DEFS.length) * 100);
+  const bar  = document.getElementById('progress-bar');
+  const txt  = document.getElementById('progress-text');
+  const pctEl= document.getElementById('progress-pct');
+  if (bar)  bar.style.width       = `${pct}%`;
+  if (txt)  txt.textContent       = `${completedCount} von ${AGENT_DEFS.length} abgeschlossen`;
+  if (pctEl)pctEl.textContent     = `${pct}%`;
+}
+
+// ─── Completion ───────────────────────────────────────────────────────────────
+function showCompletionScreen() {
+  const subtitle   = document.getElementById('subtitle');
+  const completion = document.getElementById('completion');
+  const skipLink   = document.getElementById('skip-link');
+  if (subtitle)   subtitle.style.display   = 'none';
+  if (completion) completion.style.display = 'block';
+  if (skipLink)   skipLink.style.display   = 'none';
+
+  // Auto-navigate after 4 seconds
+  setTimeout(() => { window.location.href = `device.html?id=${deviceId}`; }, 4000);
+}
+
+// ─── Main ─────────────────────────────────────────────────────────────────────
+async function main() {
+  renderInitial();
+
+  if (!state.apiKey) {
+    document.getElementById('apikey-error').style.display = 'block';
+    // Still set all cards to error state
+    AGENT_DEFS.forEach(a => updateAgentCard(a.key, 'error'));
+    updateProgress();
+    return;
+  }
+
+  // Show skip after 3s
+  setTimeout(() => {
+    const el = document.getElementById('skip-link');
+    if (el) el.style.display = 'block';
+  }, 3000);
+
+  // Set all to running immediately
+  AGENT_DEFS.forEach(a => updateAgentCard(a.key, 'running'));
+
+  // Run all agents in parallel via agents.js runAllAgents
+  await runAllAgents(device, (key, status) => {
+    updateAgentCard(key, status);
+    updateProgress();
+  });
+
+  showCompletionScreen();
+}
+
+main();
+</script>
+</body>
+</html>

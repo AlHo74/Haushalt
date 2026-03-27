@@ -308,7 +308,7 @@ function handleSave(e) {
     saveDevices();
     showToast('Gerät hinzugefügt ✓');
     const target = state.apiKey
-      ? `device.html?id=${id}&research=true`
+      ? `agents-screen.html?id=${id}`
       : `device.html?id=${id}`;
     window.location.href = target;
   }
