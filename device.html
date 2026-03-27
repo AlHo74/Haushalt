@@ -188,15 +188,16 @@ function renderInfoBlock(d, headline) {
 }
 
 function renderTabBar(d) {
-  const tabs = TABS.map(t => {
+  const tabs = TABS.map((t, i) => {
     const isActive = t.key === activeTab;
     const isRunning = researchStatus[t.key] === 'running';
     const badge = isRunning
       ? `<span class="pulse" style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--primary-light);margin-left:4px;vertical-align:middle;"></span>`
       : '';
+    const rowSep = i >= 4 ? 'border-top:1px solid var(--border);' : '';
     return `
       <button onclick="setTab('${t.key}')"
-        style="padding:9px 4px;font-size:11.5px;font-weight:${isActive?'600':'500'};border:none;background:none;cursor:pointer;border-bottom:2px solid ${isActive?'var(--primary)':'transparent'};color:${isActive?'var(--primary)':'var(--muted)'};transition:color .15s,border-color .15s;text-align:center;width:100%;">
+        style="padding:9px 4px;font-size:11.5px;font-weight:${isActive?'600':'500'};border:none;background:none;cursor:pointer;border-bottom:2px solid ${isActive?'var(--primary)':'transparent'};color:${isActive?'var(--primary)':'var(--muted)'};transition:color .15s,border-color .15s;text-align:center;width:100%;${rowSep}">
         ${t.label}${badge}
       </button>`;
   }).join('');
