@@ -188,6 +188,38 @@ function showCompletionScreen() {
   setTimeout(() => { window.location.href = `device.html?id=${deviceId}`; }, 4000);
 }
 
+// ─── Manual card: inject search links when no verified URL ────────────────────
+function injectManualSearchLinks(links) {
+  const card = document.getElementById('card-manual');
+  if (!card || !links || !links.length) return;
+
+  // Remove existing fallback section if already injected
+  const existing = card.querySelector('.manual-search-fallback');
+  if (existing) existing.remove();
+
+  const max3 = links.slice(0, 3);
+  const buttonsHtml = max3.map(l => `
+    <a href="${l.url}" target="_blank" rel="noopener"
+      style="display:block;border:1px solid var(--border);border-radius:8px;padding:9px 12px;
+             font-size:12px;font-weight:600;color:var(--text);text-decoration:none;
+             background:#fff;text-align:left;line-height:1.3;">
+      🔍 ${l.label}
+    </a>`).join('');
+
+  const section = document.createElement('div');
+  section.className = 'manual-search-fallback';
+  section.style.cssText = 'width:100%;margin-top:12px;display:flex;flex-direction:column;gap:6px;';
+  section.innerHTML = `
+    <div style="font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;
+                color:var(--muted);margin-bottom:2px;">Anleitung manuell suchen</div>
+    ${buttonsHtml}`;
+
+  // Expand card to column layout to fit the links below
+  card.style.flexDirection  = 'column';
+  card.style.alignItems     = 'flex-start';
+  card.appendChild(section);
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 async function main() {
   renderInitial();
@@ -213,6 +245,15 @@ async function main() {
   await runAllAgents(device, (key, status) => {
     updateAgentCard(key, status);
     updateProgress();
+
+    // Manual card: inject search links when no verified URL
+    if (key === 'manual' && status === 'done') {
+      const freshDevice = state.devices.find(x => x.id === deviceId);
+      const result = freshDevice?.manual;
+      if (result && (!result.manual_url || !result._verified) && result.search_links?.length) {
+        injectManualSearchLinks(result.search_links);
+      }
+    }
   });
 
   showCompletionScreen();

@@ -70,6 +70,22 @@ const AGGREGATOR_URLS = [
   },
 ];
 
+const DOMAIN_ALLOWLIST = [
+  'bosch-home.com', 'siemens-home.bsh-group.com', 'miele.at', 'miele.de',
+  'aeg.de', 'aeg.at', 'electrolux.at', 'electrolux.de',
+  'samsung.com', 'lg.com', 'whirlpool.at', 'bauknecht.eu',
+  'philips.com', 'philips.at', 'liebherr.com', 'gorenje.com',
+  'manualslib.com', 'manualslib.de', 'bedienungsanleitu.ng',
+  'devicemanuals.eu', 'media3.bosch-home.com', 'media.siemens-home.bsh-group.com',
+];
+
+const MODEL_URL_PATTERNS = {
+  'Bosch':   model => `https://www.bosch-home.com/at/service/gebrauchsanleitungen.html?query=${encodeURIComponent(model)}`,
+  'Siemens': model => `https://www.siemens-home.bsh-group.com/de/kundendienst/hilfe/bedienungsanleitungen?query=${encodeURIComponent(model)}`,
+  'Miele':   model => `https://www.miele.at/f/de/gebrauchsanweisungen-5231.aspx?q=${encodeURIComponent(model)}`,
+  'AEG':     model => `https://www.aeg.de/support/user-manuals/?q=${encodeURIComponent(model)}`,
+};
+
 // ─── Grounding rule (appended to every agent system prompt) ───────────────────
 const GROUNDING_RULE = `
 Return ONLY information you are confident is accurate for this specific device.
@@ -92,35 +108,45 @@ async function callAgentAPI(systemPrompt, userMessage) {
   return JSON.parse(match[0]);
 }
 
-// ─── Agent 1: Verification layer ──────────────────────────────────────────────
-function verifyManualResult(result, device) {
-  // Rule 1: low confidence → reject
-  if (result.confidence === 'low') {
-    return { verified: false, reason: 'low_confidence' };
+// ─── Agent 1: Helpers ─────────────────────────────────────────────────────────
+function normalizeModel(model) {
+  // Strip spaces, dashes, dots for URL matching and search
+  // "WAE 28.443" → "WAE28443"
+  return (model || '').replace(/[\s\-\.]/g, '').toUpperCase();
+}
+
+function buildSearchLinks(brand, model, category) {
+  const q        = `${brand} ${model} Bedienungsanleitung PDF`.trim();
+  const qEncoded = encodeURIComponent(q);
+
+  const links = [
+    {
+      label:  'ManualsLib suchen',
+      url:    `https://www.manualslib.de/search/?q=${encodeURIComponent(`${brand} ${model}`)}`,
+      source: 'manualslib.de',
+    },
+    {
+      label:  'Google suchen',
+      url:    `https://www.google.com/search?q=${qEncoded}`,
+      source: 'google.com',
+    },
+    {
+      label:  'bedienungsanleitu.ng suchen',
+      url:    `https://www.bedienungsanleitu.ng/search?q=${encodeURIComponent(`${brand} ${model}`)}`,
+      source: 'bedienungsanleitu.ng',
+    },
+  ];
+
+  // Prepend manufacturer portal link if known
+  if (MODEL_URL_PATTERNS[brand]) {
+    links.unshift({
+      label:  `${brand} Hersteller-Portal`,
+      url:    MODEL_URL_PATTERNS[brand](model),
+      source: HERSTELLER_URLS[brand]?.manual_portal || null,
+    });
   }
 
-  // Rule 2: model match must be confirmed
-  if (!result.model_match_confirmed) {
-    return { verified: false, reason: 'model_not_confirmed' };
-  }
-
-  // Rule 3: URL sanity check
-  // If a model is known, the URL MUST contain the model slug (prevents wrong-model URLs).
-  // If no model, fall back to requiring at least the brand name in the URL.
-  if (result.manual_url) {
-    const url       = result.manual_url.toLowerCase();
-    const modelSlug = (device.modell || '').replace(/[^a-z0-9]/gi, '').toLowerCase();
-    const brand     = (device.marke  || '').toLowerCase();
-    if (modelSlug) {
-      if (!url.includes(modelSlug)) {
-        return { verified: false, reason: 'url_mismatch' };
-      }
-    } else if (brand && !url.includes(brand)) {
-      return { verified: false, reason: 'url_mismatch' };
-    }
-  }
-
-  return { verified: true };
+  return links;
 }
 
 // ─── Progress helpers ─────────────────────────────────────────────────────────
@@ -144,100 +170,148 @@ function initAgentStatus(deviceId) {
   saveDevices();
 }
 
-// ─── Agent 1: Bedienungsanleitung (3-phase waterfall + verification) ──────────
+// ─── Agent 1: Bedienungsanleitung (4-phase search orchestrator) ───────────────
 async function runAgent1(device) {
-  const brand    = device.marke  || '';
-  const model    = device.modell || '';
-  const name     = device.name   || '';
-  const eNumber  = device._nameplate?.e_number || '';
-  const category = device.category || '';
+  const brand     = device.marke  || '';
+  const model     = device.modell || '';
+  const name      = device.name   || '';
+  const eNumber   = device._nameplate?.e_number || '';
+  const category  = device.category || '';
+  const modelNorm = normalizeModel(model);
 
-  // Phase 1: inject manufacturer portal as grounding context (no CORS fetch)
-  const mfrEntry = HERSTELLER_URLS[brand] || null;
+  // Always build search links — guaranteed fallback regardless of other phases
+  const searchLinks = buildSearchLinks(brand, model, category);
 
-  // Phase 2: build aggregator search hints for the AI
+  // ── Phase 1: Deterministic URL construction (no Claude, no hallucination) ──
+  let phase1Result = null;
+  const mfrEntry   = HERSTELLER_URLS[brand] || null;
+
+  if (mfrEntry && model && MODEL_URL_PATTERNS[brand]) {
+    phase1Result = {
+      found:                  true,
+      confidence:             'medium',    // search result page, not a direct PDF
+      source_phase:           1,
+      brand_confirmed:        true,
+      model_match_confirmed:  false,       // user must confirm on the page
+      manual_url:             MODEL_URL_PATTERNS[brand](model),
+      source_name:            `${brand} Hersteller-Portal`,
+      source_domain_verified: true,        // deterministically constructed
+    };
+  }
+
+  // ── Phase 2: Claude generates search strategy + candidate URL ──
+  // Claude's job: best search query + maybe a URL it's 100% certain of.
+  // NOT: recalling URLs from memory.
   const aggregatorHints = AGGREGATOR_URLS.map(a => {
     const q = a.search.replace('[BRAND]', brand).replace('[MODEL]', model);
-    return `${a.name}: search "${q}"`;
+    return `${a.name}: "${q}"`;
   }).join('\n');
 
-  const mfrContext = mfrEntry
-    ? `Manufacturer portal (use as grounding): ${mfrEntry.manual_portal}
-Manufacturer site search: ${mfrEntry.search_query.replace('[MODEL]', model)}`
-    : `Brand "${brand}" is NOT in the verified manufacturer list. Skip Phase 1. Go directly to aggregators.`;
+  const system = `You are Agent 1 of Haushalt-Genie. Your job is to find Bedienungsanleitungen
+(user manuals in German) for household devices sold in Austria/Germany.
 
-  // Phase 3: single AI call with strict prompt
-  const system = `You are Agent 1 of Haushalt-Genie.
-Find the official manual URL for the given device.
-
-STRICT RULES:
-1. Only return URLs you are CERTAIN exist for this EXACT model — not a similar model.
-2. If you are not 100% certain the URL leads to the correct manual for THIS specific model, set found: false.
-3. Never construct URLs by guessing — only use URLs from known, verified patterns.
-4. The model number in the URL or page MUST match the device model exactly.
-5. If the brand is not in your training data with confirmed manual URL patterns, set found: false.
-
-${GROUNDING_RULE}
+STRICT RULES — read carefully:
+1. NEVER invent or guess a URL. If you are not 100% certain a URL exists for
+   this EXACT model, do NOT include it. Set manual_url to null.
+2. A URL is only valid if its domain is in this allowlist:
+   ${DOMAIN_ALLOWLIST.join(', ')}
+3. You MAY include a manual_url ONLY if you have seen this exact URL pattern
+   in your training data for this specific model number.
+4. If unsure about the URL: set manual_url to null and found to false.
+   The search_query_suggestion is more valuable than a wrong URL.
+5. Always provide a search_query_suggestion — this cannot be wrong.
+6. Provide 3 quick_start_tips in German based on your knowledge of this device type.
 
 Return ONLY this JSON:
 {
-  "found": true,
-  "confidence": "high|medium|low",
-  "source_phase": 1,
-  "brand_confirmed": true,
-  "model_match_confirmed": true,
-  "manual_url": "https://...",
-  "source_name": "ManualsLib",
-  "pages": null,
+  "found": true | false,
+  "confidence": "high | medium | low",
+  "source_phase": 2,
+  "brand_confirmed": true | false,
+  "model_match_confirmed": true | false,
+  "manual_url": "https://... or null",
+  "source_name": "name of source or null",
+  "source_domain_verified": false,
+  "search_query_suggestion": "best German search query for this device manual",
   "key_specs": { "capacity": null, "energy_class": null, "special_features": [] },
   "programs": [],
   "quick_start_tips": [],
   "warning": null
 }`;
 
-  const user = `Find manual for:
+  const user = `Find the Bedienungsanleitung for:
 Brand: ${brand}
-Model: ${model}${eNumber ? `\nE-Number: ${eNumber}` : ''}
+Model: ${model}${modelNorm !== model.toUpperCase() ? `\nNormalized model: ${modelNorm}` : ''}${eNumber ? `\nE-Number: ${eNumber}` : ''}
 Name: ${name}${category ? `\nCategory: ${category}` : ''}
 
-${mfrContext}
-
-Aggregator fallback (if manufacturer search fails):
+Known aggregator search queries (use as inspiration for search_query_suggestion):
 ${aggregatorHints}
 
-IMPORTANT: Only set found:true if you are certain the URL leads to THIS EXACT device.
-Also provide 3 quick_start_tips in German based on your knowledge of this model.`;
+Remember: manual_url must be null unless you are 100% certain it exists for this EXACT model.`;
 
-  let result;
+  let claudeResult;
   try {
-    result = await callAgentAPI(system, user);
+    claudeResult = await callAgentAPI(system, user);
   } catch (err) {
-    result = {
-      found: false, confidence: 'low', source_phase: 3,
+    claudeResult = {
+      found: false, confidence: 'low', source_phase: 2,
       brand_confirmed: false, model_match_confirmed: false,
-      manual_url: null, source_name: null,
+      manual_url: null, source_name: null, source_domain_verified: false,
+      search_query_suggestion: `${brand} ${model} Bedienungsanleitung PDF`,
       key_specs: {}, programs: [], quick_start_tips: [],
       warning: err.message,
     };
   }
 
-  // Verification layer
-  const verification = result.found
-    ? verifyManualResult(result, device)
-    : { verified: false, reason: 'not_found' };
+  // ── Phase 3: Domain-allowlist verification (replaces slug-matching) ──
+  function isDomainVerified(url) {
+    if (!url) return false;
+    try {
+      const hostname = new URL(url).hostname.replace(/^www\./, '');
+      return DOMAIN_ALLOWLIST.some(d => hostname === d || hostname.endsWith('.' + d));
+    } catch { return false; }
+  }
 
-  result._verified      = verification.verified;
-  result._verify_reason = verification.reason || null;
-  result._mfr_portal    = mfrEntry?.manual_portal || null;
-  result._brand_known   = !!mfrEntry;
+  if (claudeResult.manual_url && !isDomainVerified(claudeResult.manual_url)) {
+    // Claude returned a URL from an unknown domain — reject it
+    claudeResult.manual_url            = null;
+    claudeResult.found                 = false;
+    claudeResult.model_match_confirmed = false;
+    claudeResult.source_domain_verified = false;
+    claudeResult.warning               = (claudeResult.warning || '') +
+      ' [URL rejected: domain not in allowlist]';
+  } else if (claudeResult.manual_url) {
+    claudeResult.source_domain_verified = true;
+  }
+
+  // ── Phase 4: Merge — phase 1 (deterministic) wins for manual_url ──
+  const bestResult = phase1Result || claudeResult;
+
+  const result = {
+    ...claudeResult,                            // specs, tips, search_query from Claude
+    found:                  bestResult.found,
+    confidence:             bestResult.confidence,
+    source_phase:           bestResult.source_phase,
+    brand_confirmed:        bestResult.brand_confirmed,
+    model_match_confirmed:  bestResult.model_match_confirmed,
+    manual_url:             bestResult.manual_url,
+    source_name:            bestResult.source_name,
+    source_domain_verified: bestResult.source_domain_verified ?? false,
+    search_links:           searchLinks,         // always present
+    _mfr_portal:            mfrEntry?.manual_portal || null,
+    _brand_known:           !!mfrEntry,
+  };
+
+  // Final trust flag (used by UI)
+  result._verified      = result.source_domain_verified && result.model_match_confirmed;
+  result._verify_reason = result._verified ? null : 'domain_or_model_unconfirmed';
 
   // Search log (Phase 2 TODO: send to Supabase)
   const d = state.devices.find(x => x.id === device.id);
   if (d) {
     d.manual_search_log = {
       timestamp:  Date.now(),
-      brand,
-      model,
+      brand, model,
       result:     result._verified ? 'found' : (result.found ? 'unverified' : 'not_found'),
       source:     result.source_name || null,
       confidence: result.confidence  || null,
