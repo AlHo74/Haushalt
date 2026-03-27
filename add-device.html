@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Gerät hinzufügen – Haushalt-Genie</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="min-h-screen font-sans" style="background:var(--bg);">
+
+<div id="app"></div>
+
+<script src="js/app.js"></script>
+<script>
+// ─── Page state ───────────────────────────────────────────────────────────────
+const editId = getUrlParam('edit');   // null = add mode, id = edit mode
+const editDevice = editId ? getDevice(editId) : null;
+
+let form = {
+  name:        editDevice?.name   || '',
+  marke:       editDevice?.marke  || '',
+  modell:      editDevice?.modell || '',
+  room:        editDevice?.room   || '',
+  dataUrl:     null,
+  photo:       editDevice?.photo  || null,
+  mime:        editDevice?.photoMime || null,
+  scanLoading: false,
+  scanError:   null,
+};
+
+// ─── SVGs ─────────────────────────────────────────────────────────────────────
+const SVG = {
+  back:    `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15,18 9,12 15,6"/></svg>`,
+  camera:  `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>`,
+  barcode: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9V5a2 2 0 0 1 2-2h4M3 15v4a2 2 0 0 0 2 2h4M21 9V5a2 2 0 0 0-2-2h-4M21 15v4a2 2 0 0 1-2 2h-4M7 8v8M11 8v8M15 8v8M19 8v8"/></svg>`,
+  pencil:  `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>`,
+  chevron: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9,18 15,12 9,6"/></svg>`,
+  save:    `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>`,
+};
+
+const INP = `style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:12px 14px;font-size:14px;color:var(--text);outline:none;box-sizing:border-box;background:#fff;"`;
+const LBL = `style="font-size:10px;font-weight:700;letter-spacing:0.1em;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:6px;"`;
+
+// ─── Render ───────────────────────────────────────────────────────────────────
+function renderPage() {
+  document.getElementById('app').innerHTML = buildHtml();
+}
+
+function buildHtml() {
+  const title = editDevice ? 'Gerät bearbeiten' : 'Neues Gerät\nhinzufügen';
+  const subtitle = editDevice
+    ? `${escHtml(editDevice.name)} – Details anpassen`
+    : 'Foto aufnehmen, scannen oder manuell eingeben.';
+
+  const photoStrip = form.dataUrl ? `
+    <div style="position:relative;border-radius:10px;overflow:hidden;margin-bottom:14px;height:90px;">
+      <img src="${form.dataUrl}" style="width:100%;height:100%;object-fit:cover;">
+      ${form.scanLoading ? `
+        <div style="position:absolute;inset:0;background:rgba(0,0,0,0.55);display:flex;align-items:center;justify-content:center;gap:10px;color:#fff;">
+          <div style="width:20px;height:20px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:spin 0.7s linear infinite;"></div>
+          <span style="font-size:13px;font-weight:500;">Gerät wird erkannt …</span>
+        </div>` : `
+        <button onclick="clearPhoto()" style="position:absolute;top:6px;right:6px;background:rgba(0,0,0,0.6);border:none;color:#fff;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px;">✕</button>
+        <div style="position:absolute;bottom:0;left:0;right:0;background:linear-gradient(to top,rgba(0,0,0,.5),transparent);padding:6px 10px;">
+          <span style="color:#fff;font-size:11px;font-weight:600;">✓ Foto gespeichert</span>
+        </div>`}
+      ${form.scanError ? `<div style="position:absolute;bottom:0;left:0;right:0;background:rgba(220,38,38,.9);padding:5px 10px;font-size:12px;color:#fff;">⚠️ ${escHtml(form.scanError)}</div>` : ''}
+    </div>` : '';
+
+  const aiHint = form.dataUrl && !form.scanLoading && !form.scanError ? `
+    <div style="background:rgba(13,148,136,0.08);border-radius:10px;padding:10px 12px;margin-bottom:14px;display:flex;align-items:center;gap:8px;">
+      <span style="font-size:16px;">✓</span>
+      <span style="font-size:13px;color:var(--primary);font-weight:500;">KI hat Felder vorausgefüllt – bitte prüfen.</span>
+    </div>` : '';
+
+  return `
+    <!-- Header -->
+    <header style="background:#fff;padding:1rem 1.25rem;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10;border-bottom:1px solid var(--border);">
+      <button onclick="window.location.href='index.html'" style="background:none;border:none;cursor:pointer;color:var(--text);display:flex;align-items:center;gap:6px;padding:0;">
+        ${SVG.back}
+        <span style="font-size:15px;font-weight:600;">Zurück</span>
+      </button>
+      <span style="font-size:15px;font-weight:700;color:var(--text);">${editDevice ? 'Bearbeiten' : 'Hinzufügen'}</span>
+      <div style="width:60px;"></div>
+    </header>
+
+    <main style="padding:0 0 180px;max-width:480px;margin:0 auto;">
+
+      <!-- Title -->
+      <div style="padding:1.5rem 1.25rem 1rem;">
+        <h1 style="font-size:28px;font-weight:800;line-height:1.2;color:var(--text);margin:0 0 6px;white-space:pre-line;">${title}</h1>
+        <p style="font-size:13px;color:var(--muted);margin:0;">${subtitle}</p>
+      </div>
+
+      ${!editDevice ? `
+      <!-- Input method cards -->
+      <div style="padding:0 1.25rem;margin-bottom:14px;">
+
+        <!-- Photo card — full width -->
+        <input type="file" id="photo-input" accept="image/*" capture="environment" style="display:none;" onchange="handlePhotoSelect(event)">
+        <button onclick="document.getElementById('photo-input').click()"
+          style="width:100%;background:#fff;border:none;border-radius:14px;padding:1rem 1.25rem;display:flex;align-items:center;gap:14px;margin-bottom:10px;cursor:pointer;text-align:left;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+          <div style="width:48px;height:48px;border-radius:50%;background:rgba(13,148,136,0.15);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#0D9488;">
+            ${SVG.camera}
+          </div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:15px;font-weight:700;color:var(--text);">Foto aufnehmen</div>
+            <div style="font-size:11px;font-weight:600;letter-spacing:0.08em;color:var(--muted);text-transform:uppercase;margin-top:2px;">KI-Schnellerkennung</div>
+          </div>
+          ${SVG.chevron}
+        </button>
+
+        <!-- Barcode + Manual row -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <button onclick="openBarcodeScanner()"
+            style="background:#fff;border:none;border-radius:14px;padding:1rem;cursor:pointer;text-align:left;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+            <div style="width:40px;height:40px;border-radius:10px;background:#F0F0EB;display:flex;align-items:center;justify-content:center;margin-bottom:10px;color:var(--muted);">
+              ${SVG.barcode}
+            </div>
+            <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:2px;">Barcode<br>scannen</div>
+            <div style="font-size:12px;color:var(--muted);">EAN/Seriennummer</div>
+          </button>
+          <button onclick="document.getElementById('f-name').focus()"
+            style="background:#fff;border:none;border-radius:14px;padding:1rem;cursor:pointer;text-align:left;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+            <div style="width:40px;height:40px;border-radius:10px;background:#F0F0EB;display:flex;align-items:center;justify-content:center;margin-bottom:10px;color:var(--muted);">
+              ${SVG.pencil}
+            </div>
+            <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:2px;">Manuell<br>eingeben</div>
+            <div style="font-size:12px;color:var(--muted);">Details tippen</div>
+          </button>
+        </div>
+      </div>` : ''}
+
+      <!-- Form card -->
+      <div style="padding:0 1.25rem;">
+        <form onsubmit="handleSave(event)" novalidate>
+          <div style="background:#fff;border-radius:14px;padding:1.25rem;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:1.1rem;">
+              <div style="width:4px;height:22px;background:var(--primary);border-radius:2px;flex-shrink:0;"></div>
+              <span style="font-size:18px;font-weight:700;color:var(--text);">Gerätedaten</span>
+            </div>
+
+            ${photoStrip}
+            ${aiHint}
+
+            <!-- Gerätename -->
+            <div style="margin-bottom:14px;">
+              <label ${LBL}>Gerätename *</label>
+              <input id="f-name" type="text" required autocomplete="off"
+                value="${escHtml(form.name)}" placeholder="z.B. Kaffeemaschine" ${INP}>
+            </div>
+
+            <!-- Marke + Modell -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
+              <div>
+                <label ${LBL}>Marke</label>
+                <input id="f-marke" type="text" autocomplete="off"
+                  value="${escHtml(form.marke)}" placeholder="Bosch" ${INP}>
+              </div>
+              <div>
+                <label ${LBL}>Modell</label>
+                <input id="f-modell" type="text" autocomplete="off"
+                  value="${escHtml(form.modell)}" placeholder="WAX28E75" ${INP}>
+              </div>
+            </div>
+
+            <!-- Raum -->
+            <div>
+              <label ${LBL}>Raum *</label>
+              <select id="f-room" required
+                style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:12px 14px;font-size:14px;color:${form.room ? 'var(--text)' : 'var(--muted)'};outline:none;box-sizing:border-box;background:#fff;appearance:none;-webkit-appearance:none;background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6,9 12,15 18,9'/%3E%3C/svg%3E\");background-repeat:no-repeat;background-position:right 14px center;">
+                <option value="">Raum auswählen</option>
+                ${ROOMS.map(r => `<option value="${r.id}" ${form.room === r.id ? 'selected' : ''}>${r.icon} ${r.label}</option>`).join('')}
+              </select>
+            </div>
+          </div>
+
+          <!-- Hidden submit -->
+          <button type="submit" id="add-submit-btn" style="display:none;"></button>
+        </form>
+      </div>
+
+    </main>
+
+    <!-- Fixed bottom save button -->
+    <div style="position:fixed;bottom:0;left:0;right:0;padding:16px 20px calc(16px + env(safe-area-inset-bottom));background:#fff;border-top:1px solid var(--border);z-index:20;">
+      <div style="max-width:480px;margin:0 auto;">
+        <button onclick="document.getElementById('add-submit-btn').click()" ${form.scanLoading ? 'disabled' : ''}
+          style="width:100%;background:var(--primary);color:#fff;border:none;border-radius:14px;padding:16px;font-size:16px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:10px;cursor:pointer;opacity:${form.scanLoading ? '0.5' : '1'};">
+          ${SVG.save} ${editDevice ? 'Änderungen speichern' : 'Gerät speichern'}
+        </button>
+      </div>
+    </div>`;
+}
+
+// ─── Photo capture & Vision API ───────────────────────────────────────────────
+async function handlePhotoSelect(e) {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  e.target.value = '';
+
+  // Capture current field values (user may have typed before picking photo)
+  const cur = {
+    name:  document.getElementById('f-name')?.value  || form.name,
+    marke: document.getElementById('f-marke')?.value || form.marke,
+    modell:document.getElementById('f-modell')?.value|| form.modell,
+    room:  document.getElementById('f-room')?.value  || form.room,
+  };
+
+  try {
+    const { dataUrl, base64, mime } = await resizeImage(file);
+    form = { ...form, ...cur, dataUrl, photo: base64, mime, scanLoading: true, scanError: null };
+    renderPage();
+
+    if (!state.apiKey) {
+      form = { ...form, scanLoading: false, scanError: 'Kein API-Key gesetzt. Bitte erst in den Einstellungen konfigurieren.' };
+      renderPage();
+      return;
+    }
+
+    const result = await analyzePhoto(base64, mime);
+    const room = result.room_suggestion ? (roomSuggestionToId(result.room_suggestion) || cur.room) : cur.room;
+    form = {
+      ...form,
+      name:  result.name  || cur.name,
+      marke: result.brand || cur.marke,
+      modell:result.model || cur.modell,
+      room,
+      scanLoading: false,
+      scanError: null,
+    };
+    renderPage();
+    showToast('Gerät erkannt ✓');
+  } catch (err) {
+    form = { ...form, scanLoading: false, scanError: err.message };
+    renderPage();
+  }
+}
+
+async function analyzePhoto(base64, mime) {
+  const data = await callAnthropic({
+    model: 'claude-sonnet-4-20250514',
+    max_tokens: 256,
+    messages: [{ role: 'user', content: [
+      { type: 'image', source: { type: 'base64', media_type: mime, data: base64 } },
+      { type: 'text',  text: 'Identify this household device. Return ONLY a JSON object: { "name": "...", "brand": "...", "model": "...", "room_suggestion": "Küche|Badezimmer|Wohnzimmer|Schlafzimmer|Keller|Garage|Sonstiges" }. Use null for unknown fields.' },
+    ]}],
+  });
+  const text = data.content[0].text;
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error('Konnte Gerät nicht identifizieren.');
+  return JSON.parse(match[0]);
+}
+
+function clearPhoto() {
+  const cur = {
+    name:  document.getElementById('f-name')?.value  || form.name,
+    marke: document.getElementById('f-marke')?.value || form.marke,
+    modell:document.getElementById('f-modell')?.value|| form.modell,
+    room:  document.getElementById('f-room')?.value  || form.room,
+  };
+  form = { name: cur.name, marke: cur.marke, modell: cur.modell, room: cur.room,
+           dataUrl: null, photo: null, mime: null, scanLoading: false, scanError: null };
+  renderPage();
+}
+
+// ─── Barcode scanner (stub) ───────────────────────────────────────────────────
+function openBarcodeScanner() {
+  showToast('Barcode-Scanner kommt bald ✨');
+}
+
+// ─── Save ─────────────────────────────────────────────────────────────────────
+function handleSave(e) {
+  e.preventDefault();
+  if (form.scanLoading) return;
+
+  const name  = document.getElementById('f-name').value.trim();
+  const marke = document.getElementById('f-marke').value.trim();
+  const modell= document.getElementById('f-modell').value.trim();
+  const room  = document.getElementById('f-room').value;
+
+  if (!name || !room) { showToast('Bitte Name und Raum ausfüllen'); return; }
+
+  if (editDevice) {
+    // Update existing device
+    const d = state.devices.find(x => x.id === editId);
+    if (d) {
+      d.name   = name;
+      d.marke  = marke  || '–';
+      d.modell = modell || '–';
+      d.room   = room;
+      if (form.photo) { d.photo = form.photo; d.photoMime = form.mime; }
+      saveDevices();
+      showToast('Änderungen gespeichert ✓');
+      window.location.href = `device.html?id=${editId}`;
+    }
+  } else {
+    // Create new device
+    const id = crypto.randomUUID();
+    const device = {
+      id, name, marke: marke || '–', modell: modell || '–', room,
+      photo: form.photo || null, photoMime: form.mime || null,
+      createdAt: Date.now(),
+    };
+    state.devices.push(device);
+    saveDevices();
+    showToast('Gerät hinzugefügt ✓');
+    const target = state.apiKey
+      ? `device.html?id=${id}&research=true`
+      : `device.html?id=${id}`;
+    window.location.href = target;
+  }
+}
+
+// ─── Boot ─────────────────────────────────────────────────────────────────────
+renderPage();
+</script>
+</body>
+</html>

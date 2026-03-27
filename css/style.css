@@ -1,0 +1,60 @@
+/* ─── Design Tokens ─────────────────────────────────────────────────────────── */
+:root {
+  --primary:       #1B5E45;
+  --primary-light: #4CAF82;
+  --accent:        #0D9488;
+  --bg:            #F5F5F0;
+  --card-bg:       #FFFFFF;
+  --text:          #1A1A1A;
+  --muted:         #888888;
+  --border:        #E8E8E4;
+}
+
+/* ─── Reset ──────────────────────────────────────────────────────────────────── */
+* { -webkit-tap-highlight-color: transparent; }
+body { background: var(--bg); }
+
+/* ─── Buttons ────────────────────────────────────────────────────────────────── */
+.btn-primary           { background-color: var(--accent); }
+.btn-primary:hover     { background-color: #0f766e; }
+
+/* ─── Animations ─────────────────────────────────────────────────────────────── */
+@keyframes blink   { 0%, 80%, 100% { opacity: 0.2; } 40% { opacity: 1; } }
+@keyframes spin    { to { transform: rotate(360deg); } }
+@keyframes fadeIn  { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
+@keyframes pulse   { 0%,100% { opacity:1; } 50% { opacity:.45; } }
+
+.spinner     { animation: spin    0.8s  linear     infinite; }
+.fade-in     { animation: fadeIn  0.3s  ease        both; }
+.pulse       { animation: pulse   1.6s  ease-in-out infinite; }
+
+.typing-dot              { animation: blink 1.2s infinite; }
+.typing-dot:nth-child(2) { animation-delay: 0.2s; }
+.typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+/* ─── Tab bar (horizontal scroll, hidden scrollbar) ─────────────────────────── */
+.tab-bar                    { overflow-x: auto; scrollbar-width: none; }
+.tab-bar::-webkit-scrollbar { display: none; }
+
+/* ─── Home screen cards ─────────────────────────────────────────────────────── */
+.hg-card-large   { background:var(--card-bg); border-radius:16px; overflow:hidden; position:relative; margin-bottom:12px; }
+.hg-card-std     { background:var(--card-bg); border-radius:14px; padding:1.25rem; margin-bottom:12px; }
+.hg-card-compact { background:var(--card-bg); border-radius:14px; padding:1.1rem 1.25rem; margin-bottom:12px; display:flex; align-items:center; gap:14px; }
+
+/* ─── Room icons ─────────────────────────────────────────────────────────────── */
+.hg-room-icon-green { width:44px; height:44px; border-radius:10px; background:rgba(76,175,130,0.12); display:flex; align-items:center; justify-content:center; font-size:20px; flex-shrink:0; }
+.hg-room-icon-gray  { width:44px; height:44px; border-radius:10px; background:#F0F0EB;               display:flex; align-items:center; justify-content:center; font-size:20px; flex-shrink:0; }
+
+/* ─── Device row (inside room card) ─────────────────────────────────────────── */
+.hg-device-row       { width:100%; text-align:left; background:none; border:none; cursor:pointer; display:flex; align-items:center; gap:12px; padding:10px 0; border-top:1px solid var(--border); }
+.hg-device-row:hover { background:none; }
+
+/* ─── Bottom navigation ──────────────────────────────────────────────────────── */
+.hg-bnav      { position:fixed; bottom:0; left:0; right:0; height:64px; background:#fff; border-top:1px solid var(--border); display:grid; grid-template-columns:repeat(4,1fr); z-index:20; }
+.hg-bnav-item { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; border:none; background:none; cursor:pointer; }
+
+/* ─── Floating action button ─────────────────────────────────────────────────── */
+.hg-fab { position:fixed; bottom:80px; right:20px; width:56px; height:56px; border-radius:50%; background:var(--primary); color:white; font-size:28px; line-height:1; border:none; cursor:pointer; box-shadow:0 4px 16px rgba(27,94,69,0.35); display:flex; align-items:center; justify-content:center; z-index:20; }
+
+/* ─── Chat bubbles ───────────────────────────────────────────────────────────── */
+.chat-bubble-user { background-color: var(--accent); }

@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Gerät – Haushalt-Genie</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="min-h-screen font-sans" style="background:var(--bg);">
+
+<div id="app"></div>
+
+<script src="js/app.js"></script>
+<script src="js/agents.js"></script>
+<script src="js/chat.js"></script>
+<script src="js/sell.js"></script>
+<script src="js/replace.js"></script>
+<script>
+// ─── Page state ───────────────────────────────────────────────────────────────
+const deviceId     = getUrlParam('id');
+const isResearch   = getUrlParam('research') === 'true';
+let   activeTab    = 'manual';
+let   researchStatus = {};   // key → 'running'|'done'|'error'
+let   photoLoading = false;
+
+const device = getDevice(deviceId);
+if (!device) { window.location.href = 'index.html'; }
+
+// ─── Tab definitions ──────────────────────────────────────────────────────────
+const TABS = [
+  { key: 'manual',       label: 'Anleitung',         disclaimer: 1 },
+  { key: 'faqs',         label: 'FAQs',              disclaimer: 2 },
+  { key: 'known_issues', label: 'Probleme & Fixes',  disclaimer: 2 },
+  { key: 'hacks',        label: 'Hacks & Tipps',     disclaimer: 3 },
+  { key: 'spare_parts',  label: 'Ersatzteile',       disclaimer: 1 },
+  { key: 'energy',       label: 'Energie',           disclaimer: 1 },
+  { key: 'mein_geraet',  label: 'Mein Gerät',        disclaimer: 0 },
+  { key: 'chat',         label: 'Chat',              disclaimer: 0 },
+];
+
+// ─── SVGs ─────────────────────────────────────────────────────────────────────
+const SVG = {
+  back:     `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15,18 9,12 15,6"/></svg>`,
+  share:    `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>`,
+  settings: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>`,
+  trash:    `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6M9 6V4h6v2"/></svg>`,
+  send:     `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`,
+  clip:     `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>`,
+};
+
+// ─── Render ───────────────────────────────────────────────────────────────────
+function renderPage() {
+  // Refresh device reference
+  const d = state.devices.find(x => x.id === deviceId);
+  if (!d) { window.location.href = 'index.html'; return; }
+
+  const showResearch = isResearch && Object.keys(researchStatus).length > 0
+    && !Object.values(researchStatus).every(s => s === 'done' || s === 'error');
+
+  document.getElementById('app').innerHTML = showResearch
+    ? renderResearchOverlay(d)
+    : renderDetail(d);
+
+  // Wire up chat after render
+  if (activeTab === 'chat' || !showResearch) {
+    initChatInput(deviceId);
+  }
+}
+
+// ─── Research progress overlay ────────────────────────────────────────────────
+function renderResearchOverlay(d) {
+  const doneCount = Object.values(researchStatus).filter(s => s === 'done' || s === 'error').length;
+  const total     = AGENT_DEFS.length;
+  const pct       = total ? Math.round((doneCount / total) * 100) : 0;
+
+  const cards = AGENT_DEFS.map(a => {
+    const s = researchStatus[a.key] || 'pending';
+    return `
+      <div style="background:#fff;border-radius:12px;border:1px solid ${s==='done'?'#d1fae5':s==='error'?'#fee2e2':'var(--border)'};padding:12px 16px;display:flex;align-items:center;gap:12px;" class="fade-in">
+        <span style="font-size:20px;">${a.icon}</span>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:13px;font-weight:600;color:var(--text);">${a.label}</div>
+          <div style="font-size:11px;margin-top:2px;color:${s==='done'?'#0D9488':s==='error'?'#dc2626':'var(--muted)'};" class="${s==='running'?'pulse':''}">
+            ${s==='done'?'Fertig':s==='error'?'Fehler':s==='running'?'Wird geladen …':'Wartend'}
+          </div>
+        </div>
+        ${s==='running'
+          ? `<div class="spinner" style="width:18px;height:18px;border:2px solid var(--primary-light);border-top-color:transparent;border-radius:50%;flex-shrink:0;"></div>`
+          : s==='done'
+            ? `<div style="width:20px;height:20px;border-radius:50%;background:#0D9488;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg></div>`
+            : s==='error'
+              ? `<div style="width:20px;height:20px;border-radius:50%;background:#fef2f2;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="3"><path d="M18 6L6 18M6 6l12 12"/></svg></div>`
+              : `<div style="width:20px;height:20px;border-radius:50%;background:var(--border);flex-shrink:0;"></div>`}
+      </div>`;
+  }).join('');
+
+  return `
+    <header style="background:#fff;border-bottom:1px solid var(--border);position:sticky;top:0;z-index:10;">
+      <div style="max-width:480px;margin:0 auto;padding:0.875rem 1rem;display:flex;align-items:center;gap:8px;">
+        <span style="flex:1;font-size:15px;font-weight:700;color:var(--text);text-align:center;">Informationen werden gesammelt</span>
+      </div>
+    </header>
+    <main style="max-width:480px;margin:0 auto;padding:2rem 1.25rem 3rem;">
+      <div style="text-align:center;margin-bottom:2rem;">
+        <div style="font-size:3rem;margin-bottom:12px;">🔬</div>
+        <h1 style="font-size:18px;font-weight:700;color:var(--text);margin:0 0 6px;">Wir sammeln Informationen …</h1>
+        <p style="font-size:13px;color:var(--muted);margin:0;">${escHtml(d.name)} · ${escHtml(d.marke)} ${escHtml(d.modell)}</p>
+      </div>
+      <div style="margin-bottom:1.5rem;">
+        <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:6px;">
+          <span>${doneCount} von ${total} abgeschlossen</span><span>${pct}%</span>
+        </div>
+        <div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;">
+          <div style="height:100%;background:var(--primary);border-radius:3px;width:${pct}%;transition:width .4s;"></div>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px;">${cards}</div>
+    </main>`;
+}
+
+// ─── Main detail view ─────────────────────────────────────────────────────────
+function renderDetail(d) {
+  const room       = ROOMS.find(r => r.id === d.room) || ROOMS[ROOMS.length - 1];
+  const nameParts  = (d.name || 'Gerät').trim().split(/\s+/);
+  const lastWord   = nameParts.pop();
+  const headline   = nameParts.length > 0
+    ? `${escHtml(nameParts.join(' '))} <span style="color:var(--primary-light);">${escHtml(lastWord)}</span>`
+    : `<span style="color:var(--primary-light);">${escHtml(lastWord)}</span>`;
+
+  return `
+    ${renderDetailHeader(d)}
+    <div style="max-width:480px;margin:0 auto;padding-bottom:90px;">
+      ${renderHeroImage(d, room)}
+      ${renderInfoBlock(d, headline)}
+      ${renderTabBar(d)}
+      <div style="background:#fff;border-radius:12px;margin:0 1rem;box-shadow:0 1px 4px rgba(0,0,0,.06);overflow:hidden;">
+        <div style="padding:${activeTab==='chat'?'1rem':'1.25rem'};">
+          ${renderTabContent(d)}
+        </div>
+      </div>
+    </div>
+    ${renderChatBar()}`;
+}
+
+function renderDetailHeader(d) {
+  return `
+    <header style="background:#fff;border-bottom:1px solid var(--border);position:sticky;top:0;z-index:10;">
+      <div style="max-width:480px;margin:0 auto;padding:.875rem 1rem;display:flex;align-items:center;gap:8px;">
+        <a href="index.html" style="color:var(--text);padding:4px;display:flex;align-items:center;flex-shrink:0;">${SVG.back}</a>
+        <h1 style="flex:1;font-size:15px;font-weight:700;color:var(--text);text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHtml(d.name)}</h1>
+        <div style="display:flex;gap:2px;flex-shrink:0;">
+          <button style="background:none;border:none;cursor:pointer;color:var(--muted);padding:4px;display:flex;" onclick="showToast('Teilen folgt in Version 2')">${SVG.share}</button>
+          <a href="settings.html" style="color:var(--muted);padding:4px;display:flex;align-items:center;">${SVG.settings}</a>
+        </div>
+      </div>
+    </header>`;
+}
+
+function renderHeroImage(d, room) {
+  return `
+    <div style="position:relative;width:100%;height:220px;background:#F0F0EB;overflow:hidden;">
+      ${d.photo
+        ? `<img src="data:${d.photoMime||'image/jpeg'};base64,${d.photo}" style="width:100%;height:100%;object-fit:cover;">`
+        : `<img src="${getDevicePlaceholderImg(d.name)}" style="width:100%;height:100%;object-fit:cover;" onerror="this.style.display='none'">
+           <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:5rem;">${room.icon}</div>`}
+      ${d.modell && d.modell !== '–' ? `
+        <div style="position:absolute;bottom:12px;right:12px;background:rgba(255,255,255,0.93);border-radius:8px;padding:5px 10px;backdrop-filter:blur(4px);">
+          <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);font-weight:600;">MODELL-ID</div>
+          <div style="font-size:13px;font-weight:700;color:var(--primary-light);">${escHtml(d.modell)}</div>
+        </div>` : ''}
+    </div>`;
+}
+
+function renderInfoBlock(d, headline) {
+  const subtext = [d.marke, d.modell].filter(s => s && s !== '–').join(' · ');
+  return `
+    <div style="padding:1.25rem 1.25rem 0.75rem;">
+      <h2 style="font-size:28px;font-weight:800;line-height:1.2;color:var(--text);margin:0 0 6px;">${headline}</h2>
+      ${subtext ? `<p style="font-size:14px;color:var(--muted);margin:0 0 14px;">${escHtml(subtext)}</p>` : ''}
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+        <div style="display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;">
+          <button onclick="openSellModal('${d.id}')" style="display:inline-flex;align-items:center;gap:5px;font-size:13px;font-weight:600;color:var(--primary);background:rgba(27,94,69,0.08);border:none;border-radius:8px;padding:7px 14px;cursor:pointer;white-space:nowrap;">🏷️ Verkaufen</button>
+          <button onclick="openReplaceModal('${d.id}')" style="display:inline-flex;align-items:center;gap:5px;font-size:13px;font-weight:600;color:var(--primary);background:rgba(27,94,69,0.08);border:none;border-radius:8px;padding:7px 14px;cursor:pointer;white-space:nowrap;">🔄 Ersetzen</button>
+          <a href="add-device.html?edit=${d.id}" style="display:inline-flex;align-items:center;gap:5px;font-size:13px;font-weight:600;color:var(--primary);background:rgba(27,94,69,0.08);border:none;border-radius:8px;padding:7px 14px;cursor:pointer;white-space:nowrap;text-decoration:none;">✏️ Bearbeiten</a>
+        </div>
+        <button onclick="confirmDelete('${d.id}')" style="display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#c0392b;background:none;border:1px solid #f5c6c5;border-radius:8px;padding:6px 10px;cursor:pointer;font-weight:500;white-space:nowrap;flex-shrink:0;">${SVG.trash} Löschen</button>
+      </div>
+    </div>`;
+}
+
+function renderTabBar(d) {
+  const tabs = TABS.map(t => {
+    const isActive = t.key === activeTab;
+    const isRunning = researchStatus[t.key] === 'running';
+    const badge = isRunning
+      ? `<span class="pulse" style="display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--primary-light);margin-left:4px;vertical-align:middle;"></span>`
+      : '';
+    return `
+      <button onclick="setTab('${t.key}')"
+        style="padding:10px 14px;font-size:13px;font-weight:${isActive?'600':'500'};border:none;background:none;cursor:pointer;white-space:nowrap;border-bottom:2px solid ${isActive?'var(--primary)':'transparent'};color:${isActive?'var(--primary)':'var(--muted)'};transition:color .15s,border-color .15s;flex-shrink:0;">
+        ${t.label}${badge}
+      </button>`;
+  }).join('');
+
+  return `
+    <div style="background:#fff;border-bottom:1px solid var(--border);display:flex;overflow-x:auto;scrollbar-width:none;margin:0 1rem 0;border-radius:12px 12px 0 0;box-shadow:0 1px 4px rgba(0,0,0,.06);">
+      ${tabs}
+    </div>`;
+}
+
+// ─── Tab content dispatcher ───────────────────────────────────────────────────
+function renderTabContent(d) {
+  switch (activeTab) {
+    case 'manual':       return renderManualTab(d);
+    case 'faqs':         return renderFaqsTab(d);
+    case 'known_issues': return renderKnownIssuesTab(d);
+    case 'hacks':        return renderHacksTab(d);
+    case 'spare_parts':  return renderSparePartsTab(d);
+    case 'energy':       return renderEnergyTab(d);
+    case 'mein_geraet':  return renderMeinGeraetTab(d);
+    case 'chat':         return renderChatSection(d);
+    default:             return renderManualTab(d);
+  }
+}
+
+// ── Agent loading / error states ──────────────────────────────────────────────
+function agentPlaceholder(key) {
+  const s = researchStatus[key];
+  if (s === 'running') return `
+    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:3rem 0;gap:10px;color:var(--muted);">
+      <div class="spinner" style="width:24px;height:24px;border:2px solid var(--primary-light);border-top-color:transparent;border-radius:50%;"></div>
+      <span style="font-size:14px;" class="pulse">Agent sucht Informationen …</span>
+    </div>`;
+  return `
+    <div style="padding:2rem 0;text-align:center;color:var(--muted);font-size:14px;">
+      <div style="font-size:2rem;margin-bottom:8px;">📭</div>
+      Keine Daten verfügbar.
+      ${!state.apiKey ? `<br><a href="settings.html" style="color:var(--primary);font-weight:600;">API-Schlüssel hinterlegen →</a>` : ''}
+    </div>`;
+}
+
+function disclaimerBar(level) {
+  if (level === 1) return `<p style="font-size:11px;color:var(--muted);margin:12px 0 0;padding:8px 10px;background:#f8f8f6;border-radius:8px;">ℹ️ Quelle: Offizielle Herstellerinformation. Haushalt-Genie übernimmt keine Gewähr.</p>`;
+  if (level === 2) return `<div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;padding:8px 10px;margin-top:12px;font-size:12px;color:#92400e;">⚠️ Nicht direkt vom Hersteller. Bitte eigenständig verifizieren.</div>`;
+  if (level === 3) return `<div style="background:#fff7ed;border:1px solid #fdba74;border-radius:8px;padding:8px 10px;margin-top:12px;font-size:12px;color:#9a3412;">⚠️ Community-Tipp, nicht vom Hersteller geprüft. Auf eigene Verantwortung.</div>`;
+  return '';
+}
+
+// ── Tab 1: Bedienungsanleitung ────────────────────────────────────────────────
+function renderManualTab(d) {
+  const m = d.manual;
+  if (!m) return agentPlaceholder('manual');
+
+  if (typeof m === 'string') return `<div style="font-size:14px;color:var(--text);line-height:1.75;white-space:pre-wrap;" class="fade-in">${escHtml(m)}</div>`;
+
+  if (!m.found) {
+    const search = `https://www.google.com/search?q=${encodeURIComponent(`${d.marke||''} ${d.modell||''} Bedienungsanleitung PDF`.trim())}`;
+    return `
+      <div class="fade-in">
+        <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:12px;padding:14px 16px;margin-bottom:16px;">
+          <p style="font-size:14px;font-weight:600;color:#92400e;margin:0 0 4px;">⚠️ Keine Anleitung gefunden</p>
+          <p style="font-size:13px;color:#b45309;margin:0;">Für <strong>${escHtml(d.marke)} ${escHtml(d.modell)}</strong> konnte automatisch keine Anleitung gefunden werden.</p>
+        </div>
+        <a href="${search}" target="_blank" rel="noopener"
+          style="display:flex;align-items:center;justify-content:center;gap:8px;padding:11px;background:var(--primary);color:#fff;border-radius:10px;font-weight:600;font-size:14px;text-decoration:none;">
+          🔍 Manuell suchen
+        </a>
+        ${disclaimerBar(1)}
+      </div>`;
+  }
+
+  const specs   = m.key_specs || {};
+  const pills   = [specs.capacity && `Kapazität: ${specs.capacity}`, specs.energy_class && `Energieklasse: ${specs.energy_class}`, ...(specs.special_features||[])].filter(Boolean);
+  const programs = m.programs || [];
+  const tips     = m.quick_start_tips || [];
+
+  return `
+    <div class="fade-in">
+      <a href="${escHtml(m.manual_url)}" target="_blank" rel="noopener"
+        style="display:flex;align-items:center;justify-content:center;gap:8px;padding:13px;background:var(--primary);color:#fff;border-radius:12px;font-weight:700;font-size:15px;text-decoration:none;margin-bottom:${m.pdf_url?'10px':'16px'};">
+        📖 Anleitung öffnen
+      </a>
+      ${m.pdf_url ? `<a href="${escHtml(m.pdf_url)}" target="_blank" rel="noopener" style="display:flex;align-items:center;justify-content:center;gap:8px;padding:10px;border:1.5px solid var(--primary);color:var(--primary);border-radius:12px;font-weight:600;font-size:14px;text-decoration:none;margin-bottom:16px;">⬇️ PDF herunterladen</a>` : ''}
+      ${pills.length ? `<div style="margin-bottom:14px;"><p style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 8px;">Technische Daten</p><div style="display:flex;flex-wrap:wrap;gap:6px;">${pills.map(s=>`<span style="font-size:12px;font-weight:600;padding:4px 10px;border-radius:20px;background:rgba(76,175,130,0.12);color:var(--primary);">${escHtml(s)}</span>`).join('')}</div></div>` : ''}
+      ${programs.length ? `<div style="margin-bottom:14px;"><p style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 8px;">Programme</p><div style="display:flex;flex-wrap:wrap;gap:6px;">${programs.map(p=>`<span style="font-size:12px;padding:4px 10px;border-radius:20px;background:var(--border);color:var(--text);">${escHtml(p)}</span>`).join('')}</div></div>` : ''}
+      ${tips.length ? `<div style="margin-bottom:14px;"><p style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 8px;">Wichtige Hinweise</p><ol style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:8px;">${tips.map(t=>`<li style="font-size:14px;color:var(--text);line-height:1.6;">${escHtml(t)}</li>`).join('')}</ol></div>` : ''}
+      ${m.source||m.confidence ? `<p style="font-size:12px;color:var(--muted);margin:0 0 8px;">Quelle: ${escHtml(m.source||'Online')} · Konfidenz: ${escHtml(m.confidence||'')}</p>` : ''}
+      ${disclaimerBar(1)}
+    </div>`;
+}
+
+// ── Tab 2: FAQs ───────────────────────────────────────────────────────────────
+function renderFaqsTab(d) {
+  const data = d.faqs;
+  if (!data) return agentPlaceholder('faqs');
+  const faqs = Array.isArray(data) ? data : (data.faqs || []);
+  if (!faqs.length) return agentPlaceholder('faqs');
+  return `
+    <div class="fade-in" style="display:flex;flex-direction:column;gap:10px;">
+      ${faqs.map(f => `
+        <div style="background:var(--bg);border-radius:10px;padding:12px 14px;">
+          <p style="font-size:14px;font-weight:600;color:var(--text);margin:0 0 6px;">❓ ${escHtml(f.question)}</p>
+          <p style="font-size:13px;color:var(--muted);margin:0;line-height:1.6;">${escHtml(f.answer)}</p>
+        </div>`).join('')}
+      ${disclaimerBar(2)}
+    </div>`;
+}
+
+// ── Tab 3: Bekannte Probleme ──────────────────────────────────────────────────
+function renderKnownIssuesTab(d) {
+  const data = d.known_issues;
+  if (!data) return agentPlaceholder('known_issues');
+  const issues = Array.isArray(data) ? data : (data.issues || []);
+  if (!issues.length) return agentPlaceholder('known_issues');
+  const sevColor = { high:'#dc2626', medium:'#d97706', low:'#6b7280' };
+  return `
+    <div class="fade-in" style="display:flex;flex-direction:column;gap:10px;">
+      ${issues.map(i => `
+        <div style="background:var(--bg);border-radius:10px;padding:12px 14px;border-left:3px solid ${sevColor[i.severity]||sevColor.low};">
+          <p style="font-size:14px;font-weight:600;color:var(--text);margin:0 0 4px;">🔧 ${escHtml(i.problem)}</p>
+          <p style="font-size:13px;color:#0D9488;margin:0;line-height:1.55;">✓ ${escHtml(i.fix)}</p>
+        </div>`).join('')}
+      ${disclaimerBar(2)}
+    </div>`;
+}
+
+// ── Tab 4: Hacks & Tipps ──────────────────────────────────────────────────────
+function renderHacksTab(d) {
+  const data = d.hacks;
+  if (!data) return agentPlaceholder('hacks');
+  const hacks = Array.isArray(data) ? data : (data.hacks || []);
+  if (!hacks.length) return agentPlaceholder('hacks');
+  const stars = n => '★'.repeat(Math.min(5,n||0)) + '☆'.repeat(5-Math.min(5,n||0));
+  return `
+    <div class="fade-in" style="display:flex;flex-direction:column;gap:10px;">
+      ${hacks.map(h => `
+        <div style="background:var(--bg);border-radius:10px;padding:12px 14px;">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:4px;">
+            <p style="font-size:14px;font-weight:600;color:var(--text);margin:0;">💡 ${escHtml(h.tip)}</p>
+            <span style="font-size:12px;color:#f59e0b;flex-shrink:0;">${stars(h.rating)}</span>
+          </div>
+          ${h.source_type ? `<span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:10px;background:var(--border);color:var(--muted);">${escHtml(h.source_type)}</span>` : ''}
+        </div>`).join('')}
+      ${disclaimerBar(3)}
+    </div>`;
+}
+
+// ── Tab 5: Ersatzteile ────────────────────────────────────────────────────────
+function renderSparePartsTab(d) {
+  const data = d.spare_parts;
+  if (!data) return agentPlaceholder('spare_parts');
+  const parts = Array.isArray(data) ? data : (data.parts || []);
+  if (!parts.length) return agentPlaceholder('spare_parts');
+  const typeIcon = { spare_part:'🔩', accessory:'🧩', consumable:'🔄' };
+  return `
+    <div class="fade-in" style="display:flex;flex-direction:column;gap:8px;">
+      ${parts.map(p => `
+        <div style="background:var(--bg);border-radius:10px;padding:12px 14px;display:flex;align-items:center;gap:12px;">
+          <span style="font-size:20px;flex-shrink:0;">${typeIcon[p.type]||'🔩'}</span>
+          <div style="flex:1;min-width:0;">
+            <p style="font-size:14px;font-weight:600;color:var(--text);margin:0 0 2px;">${escHtml(p.name)}</p>
+            <p style="font-size:12px;color:var(--muted);margin:0;font-family:monospace;">${escHtml(p.search_term)}</p>
+          </div>
+          <a href="https://www.amazon.at/s?k=${encodeURIComponent(p.search_term)}" target="_blank"
+            style="font-size:12px;font-weight:600;color:var(--primary);text-decoration:none;white-space:nowrap;flex-shrink:0;">
+            🛒 Suchen
+          </a>
+        </div>`).join('')}
+      ${disclaimerBar(1)}
+    </div>`;
+}
+
+// ── Tab 6: Energie ────────────────────────────────────────────────────────────
+function renderEnergyTab(d) {
+  const data = d.energy;
+  if (!data) return agentPlaceholder('energy');
+  const tips = data.eco_tips || [];
+  return `
+    <div class="fade-in">
+      ${data.energy_class || data.consumption_kwh ? `
+        <div style="background:rgba(76,175,130,0.08);border-radius:12px;padding:16px;margin-bottom:16px;display:flex;gap:16px;align-items:center;">
+          ${data.energy_class ? `<div style="text-align:center;"><div style="font-size:28px;font-weight:800;color:var(--primary);">${escHtml(data.energy_class)}</div><div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);">Energieklasse</div></div>` : ''}
+          ${data.consumption_kwh ? `<div style="text-align:center;flex:1;"><div style="font-size:22px;font-weight:700;color:var(--text);">${data.consumption_kwh} kWh</div><div style="font-size:11px;color:var(--muted);">${escHtml(data.consumption_note||'pro Jahr')}</div></div>` : ''}
+          ${data.standby_w ? `<div style="text-align:center;"><div style="font-size:18px;font-weight:700;color:var(--muted);">${data.standby_w}W</div><div style="font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);">Standby</div></div>` : ''}
+        </div>` : ''}
+      ${tips.length ? `
+        <p style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 8px;">Spartipps</p>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          ${tips.map(t => `
+            <div style="background:var(--bg);border-radius:10px;padding:12px 14px;">
+              <p style="font-size:14px;color:var(--text);margin:0 0 4px;">⚡ ${escHtml(t.tip)}</p>
+              ${t.saving ? `<p style="font-size:12px;color:#0D9488;font-weight:600;margin:0;">${escHtml(t.saving)}</p>` : ''}
+            </div>`).join('')}
+        </div>` : ''}
+      ${disclaimerBar(1)}
+    </div>`;
+}
+
+// ── Tab 7: Mein Gerät ─────────────────────────────────────────────────────────
+function renderMeinGeraetTab(d) {
+  const md  = d.myDevice || {};
+  const inp = `style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:10px 14px;font-size:14px;color:var(--text);outline:none;box-sizing:border-box;background:#fff;"`;
+  const lbl = (text) => `<label style="font-size:11px;font-weight:700;letter-spacing:0.08em;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:5px;">${text}</label>`;
+
+  // Status banners
+  const today = new Date();
+  let banners = '';
+  if (md.garantieende) {
+    const end = new Date(md.garantieende);
+    const days = (end - today) / 86400000;
+    if (end < today) banners += `<div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:13px;color:#dc2626;font-weight:600;">🔴 Garantie abgelaufen am ${md.garantieende}</div>`;
+    else if (days <= 30) banners += `<div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:13px;color:#d97706;font-weight:600;">🟡 Garantie läuft ab in ${Math.ceil(days)} Tagen</div>`;
+  }
+  if (md.naechsteWartung && new Date(md.naechsteWartung) < today) {
+    banners += `<div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:13px;color:#d97706;font-weight:600;">🟡 Wartung überfällig seit ${md.naechsteWartung}</div>`;
+  }
+
+  return `
+    <div class="fade-in">
+      ${banners}
+      <div style="display:flex;flex-direction:column;gap:14px;">
+
+        <div>${lbl('Seriennummer')}<input type="text" value="${escHtml(md.seriennummer||'')}" placeholder="SN-12345" oninput="saveMD('seriennummer',this.value)" ${inp}></div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div>${lbl('Kaufdatum')}<input type="date" value="${md.kaufdatum||''}" oninput="onKaufdatumChange(this.value)" ${inp}></div>
+          <div>${lbl('Kaufpreis (EUR)')}<input type="number" value="${md.kaufpreis||''}" placeholder="0" min="0" oninput="saveMD('kaufpreis',this.value)" ${inp}></div>
+        </div>
+
+        <div>${lbl('Händler / Geschäft')}<input type="text" value="${escHtml(md.haendler||'')}" placeholder="MediaMarkt" oninput="saveMD('haendler',this.value)" ${inp}></div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div>${lbl('Garantieende')}<input id="md-garantieende" type="date" value="${md.garantieende||''}" oninput="saveMD('garantieende',this.value)" ${inp}></div>
+          <div>${lbl('Letzte Wartung')}<input type="date" value="${md.letzteWartung||''}" oninput="saveMD('letzteWartung',this.value)" ${inp}></div>
+        </div>
+
+        <div>${lbl('Nächste Wartung')}<input type="date" value="${md.naechsteWartung||''}" oninput="saveMD('naechsteWartung',this.value)" ${inp}></div>
+
+        <div>${lbl('Wartungsnotizen')}<textarea rows="3" placeholder="z.B. Filter gewechselt, Kalk entfernt …" oninput="saveMD('notizen',this.value)" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:10px 14px;font-size:14px;color:var(--text);outline:none;resize:none;box-sizing:border-box;background:#fff;">${escHtml(md.notizen||'')}</textarea></div>
+
+        <div style="background:var(--bg);border-radius:10px;padding:10px 12px;">
+          <p style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:0 0 8px;">Dokumente</p>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            ${renderDocField(d, 'rechnung', '🧾 Rechnung / Kassenbon')}
+            ${renderDocField(d, 'anleitung_pdf', '📄 Anleitung PDF')}
+          </div>
+        </div>
+
+        <div style="background:var(--bg);border-radius:10px;padding:10px 12px;">
+          <p style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:0 0 10px;">Erinnerungen</p>
+          ${renderToggle('Garantieende-Erinnerung', 'reminderGarantie', md.reminderGarantie)}
+          ${renderToggle('Wartungs-Erinnerung', 'reminderWartung', md.reminderWartung)}
+        </div>
+
+      </div>
+    </div>`;
+}
+
+function renderDocField(d, key, label) {
+  const md  = d.myDevice || {};
+  const doc = md[key];
+  return doc
+    ? `<div style="display:flex;align-items:center;gap:10px;">
+         <span style="font-size:14px;flex-shrink:0;">${label.split(' ')[0]}</span>
+         <span style="font-size:13px;font-weight:500;color:var(--text);flex:1;">Gespeichert ✓</span>
+         <button onclick="saveMD('${key}',null)" style="font-size:12px;color:#c0392b;background:none;border:none;cursor:pointer;">Löschen</button>
+       </div>`
+    : `<label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+         <span style="font-size:13px;color:var(--muted);flex:1;">${label}</span>
+         <span style="font-size:12px;font-weight:600;color:var(--primary);background:rgba(27,94,69,0.08);padding:5px 12px;border-radius:8px;">Hochladen</span>
+         <input type="file" accept="image/*,application/pdf" style="display:none;" onchange="uploadDoc('${key}',this)">
+       </label>`;
+}
+
+function renderToggle(label, key, value) {
+  return `
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;">
+      <span style="font-size:14px;color:var(--text);">${label}</span>
+      <button onclick="toggleMD('${key}')" role="switch" aria-checked="${!!value}"
+        style="width:44px;height:24px;border-radius:12px;border:none;cursor:pointer;background:${value?'var(--primary)':'var(--border)'};position:relative;transition:background .2s;flex-shrink:0;">
+        <span style="position:absolute;top:2px;left:${value?'22px':'2px'};width:20px;height:20px;border-radius:50%;background:#fff;transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.2);"></span>
+      </button>
+    </div>`;
+}
+
+// ── Tab 8: Chat ───────────────────────────────────────────────────────────────
+function renderChatSection(d) {
+  if (!state.apiKey) return `
+    <div style="padding:3rem 0;text-align:center;font-size:14px;color:var(--muted);">
+      <div style="font-size:2rem;margin-bottom:8px;">🔑</div>
+      <p style="margin:0 0 12px;">Kein API-Schlüssel hinterlegt.</p>
+      <a href="settings.html" style="color:var(--primary);font-weight:600;">Einstellungen öffnen →</a>
+    </div>`;
+  return `<div id="chat-messages" style="overflow-y:auto;display:flex;flex-direction:column;gap:8px;min-height:160px;max-height:380px;"></div>`;
+}
+
+// ─── Fixed chat bar ───────────────────────────────────────────────────────────
+function renderChatBar() {
+  return `
+    <div style="position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid var(--border);padding:10px 16px;z-index:20;padding-bottom:env(safe-area-inset-bottom,10px);">
+      <div style="max-width:480px;margin:0 auto;display:flex;align-items:center;gap:8px;background:var(--bg);border-radius:24px;padding:8px 8px 8px 14px;">
+        <span style="color:var(--muted);display:flex;align-items:center;flex-shrink:0;">${SVG.clip}</span>
+        <textarea id="chat-input" rows="1" autocomplete="off"
+          placeholder="Frage zu diesem Gerät stellen …"
+          style="flex:1;background:none;border:none;outline:none;font-size:14px;color:var(--text);min-width:0;resize:none;max-height:96px;overflow-y:auto;line-height:1.4;padding:0;font-family:inherit;"></textarea>
+        <button id="chat-send-btn" onclick="handleChatSend()"
+          style="width:34px;height:34px;border-radius:50%;background:var(--primary);color:white;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          ${SVG.send}
+        </button>
+      </div>
+    </div>`;
+}
+
+// ─── Mein Gerät helpers ───────────────────────────────────────────────────────
+function saveMD(field, value) {
+  const d = state.devices.find(x => x.id === deviceId);
+  if (!d) return;
+  if (!d.myDevice) d.myDevice = {};
+  if (value === null) delete d.myDevice[field];
+  else d.myDevice[field] = value;
+  saveDevices();
+}
+
+function toggleMD(field) {
+  const d = state.devices.find(x => x.id === deviceId);
+  if (!d) return;
+  if (!d.myDevice) d.myDevice = {};
+  d.myDevice[field] = !d.myDevice[field];
+  saveDevices();
+  renderPage();
+}
+
+function onKaufdatumChange(value) {
+  saveMD('kaufdatum', value);
+  const d = state.devices.find(x => x.id === deviceId);
+  if (value && d && !d.myDevice?.garantieende) {
+    const date = new Date(value);
+    date.setFullYear(date.getFullYear() + 2);
+    const suggested = date.toISOString().slice(0, 10);
+    saveMD('garantieende', suggested);
+    const el = document.getElementById('md-garantieende');
+    if (el) el.value = suggested;
+  }
+}
+
+function uploadDoc(key, input) {
+  const file = input.files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => { saveMD(key, e.target.result); showToast('Dokument gespeichert ✓'); renderPage(); };
+  reader.readAsDataURL(file);
+}
+
+// ─── Tab switching ────────────────────────────────────────────────────────────
+function setTab(tab) {
+  activeTab = tab;
+  renderPage();
+}
+
+// ─── Chat send handler (switches to chat tab) ─────────────────────────────────
+function handleChatSend() {
+  if (activeTab !== 'chat') {
+    activeTab = 'chat';
+    renderPage();
+    setTimeout(() => sendChatMessage(deviceId), 50);
+  } else {
+    sendChatMessage(deviceId);
+  }
+}
+
+// ─── Research flow ────────────────────────────────────────────────────────────
+function startResearch() {
+  AGENT_DEFS.forEach(a => { researchStatus[a.key] = 'running'; });
+  renderPage();
+
+  runAllAgents(device, (key, status) => {
+    researchStatus[key] = status;
+    // Reload device reference after agents write to it
+    renderPage();
+
+    const allSettled = Object.values(researchStatus).every(s => s === 'done' || s === 'error');
+    if (allSettled) {
+      setTimeout(() => {
+        history.replaceState({}, '', `device.html?id=${deviceId}`);
+        renderPage();
+      }, 900);
+    }
+  });
+}
+
+// ─── Boot ─────────────────────────────────────────────────────────────────────
+renderPage();
+
+if (isResearch && state.apiKey) {
+  startResearch();
+} else if (isResearch && !state.apiKey) {
+  // No key — skip research, clean URL
+  history.replaceState({}, '', `device.html?id=${deviceId}`);
+}
+</script>
+</body>
+</html>

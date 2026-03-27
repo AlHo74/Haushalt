@@ -1,0 +1,187 @@
+// ─── Constants ────────────────────────────────────────────────────────────────
+const ROOMS = [
+  { id:'kueche',       label:'Küche',        icon:'🍳' },
+  { id:'bad',          label:'Bad',           icon:'🚿' },
+  { id:'wohnzimmer',   label:'Wohnzimmer',    icon:'🛋️' },
+  { id:'schlafzimmer', label:'Schlafzimmer',  icon:'🛏️' },
+  { id:'buero',        label:'Büro',          icon:'💻' },
+  { id:'keller',       label:'Keller',        icon:'🔧' },
+  { id:'garage',       label:'Garage',        icon:'🚗' },
+  { id:'sonstiges',    label:'Sonstiges',     icon:'📦' },
+];
+
+const DEVICE_PHOTOS = [
+  { keys:['geschirrspül','dishwasher'],                                  id:'photo-1585771724684-38269d6639fd' },
+  { keys:['waschmaschine','washing'],                                    id:'photo-1582735689369-4fe89db7114c' },
+  { keys:['trockner','dryer'],                                           id:'photo-1626806787461-102c1bfaaea1' },
+  { keys:['kühlschrank','kuehlschrank','fridge','refrigerator'],         id:'photo-1584568694244-14fbdf83bd30' },
+  { keys:['herd','backofen','oven','stove'],                             id:'photo-1556909114-f6e7ad7d3136' },
+  { keys:['kaffeemaschine','coffee'],                                    id:'photo-1559056199-641a0ac8b55e' },
+  { keys:['mikrowelle','microwave'],                                     id:'photo-1574269909862-7e1d70bb8078' },
+  { keys:['fernseher','television','tv'],                                id:'photo-1593359677879-a4bb92f829d1' },
+  { keys:['staubsauger','vacuum'],                                       id:'photo-1558618666-fcd25c85cd64' },
+  { keys:['spülmaschine'],                                               id:'photo-1585771724684-38269d6639fd' },
+];
+
+// ─── Shared state (loaded once from localStorage per page) ───────────────────
+const state = {
+  devices: JSON.parse(localStorage.getItem('hg_devices') || '[]'),
+  chats:   JSON.parse(localStorage.getItem('hg_chats')   || '{}'),
+  apiKey:  localStorage.getItem('hg_apikey') || '',
+};
+
+// ─── Persistence ──────────────────────────────────────────────────────────────
+function saveDevices() { localStorage.setItem('hg_devices', JSON.stringify(state.devices)); }
+function saveChats()   { localStorage.setItem('hg_chats',   JSON.stringify(state.chats));   }
+
+// ─── Navigation (MPA: href-based) ────────────────────────────────────────────
+function navigate(page, id) {
+  const routes = {
+    main:     'index.html',
+    add:      'add-device.html',
+    settings: 'settings.html',
+    detail:   `device.html?id=${id || ''}`,
+  };
+  window.location.href = routes[page] || 'index.html';
+}
+
+// ─── URL helpers ──────────────────────────────────────────────────────────────
+function getUrlParam(key) {
+  return new URLSearchParams(window.location.search).get(key);
+}
+
+function getDevice(id) {
+  const deviceId = id || getUrlParam('id');
+  return state.devices.find(d => d.id === deviceId) || null;
+}
+
+// ─── Device actions ───────────────────────────────────────────────────────────
+function deleteDevice(id) {
+  state.devices = state.devices.filter(d => d.id !== id);
+  delete state.chats[id];
+  saveDevices();
+  saveChats();
+  showToast('Gerät gelöscht');
+  navigate('main');
+}
+
+function confirmDelete(id) {
+  if (confirm('Gerät wirklich löschen? Alle Daten gehen verloren.')) deleteDevice(id);
+}
+
+// ─── Settings actions ─────────────────────────────────────────────────────────
+function saveApiKey() {
+  state.apiKey = (document.getElementById('s-apikey')?.value || '').trim();
+  localStorage.setItem('hg_apikey', state.apiKey);
+  showToast('API-Schlüssel gespeichert ✓');
+}
+
+function resetAll() {
+  if (!confirm('Wirklich ALLE Daten löschen? Geräte, Chats und API-Schlüssel werden entfernt.')) return;
+  state.devices = []; state.chats = {}; state.apiKey = '';
+  localStorage.removeItem('hg_devices');
+  localStorage.removeItem('hg_chats');
+  localStorage.removeItem('hg_apikey');
+  navigate('main');
+}
+
+// ─── Toast ────────────────────────────────────────────────────────────────────
+function showToast(msg) {
+  const t = document.createElement('div');
+  t.className = 'fixed bottom-6 left-1/2 -translate-x-1/2 text-white text-sm px-5 py-2 rounded-full shadow-lg z-50 pointer-events-none';
+  t.style.cssText = 'background-color:#0D9488; opacity:1; transition:opacity 0.35s;';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => { t.style.opacity = '0'; }, 1800);
+  setTimeout(() => t.remove(), 2200);
+}
+
+// ─── Utilities ────────────────────────────────────────────────────────────────
+function escHtml(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function icon(path, cls = 'w-5 h-5') {
+  return `<svg class="${cls}" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${path}"/></svg>`;
+}
+
+const ICONS = {
+  back:     'M15 19l-7-7 7-7',
+  settings: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z',
+  trash:    'M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16',
+  chevron:  'M9 5l7 7-7 7',
+  check:    'M5 13l4 4L19 7',
+  camera:   'M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z M12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8z',
+  x:        'M18 6L6 18M6 6l12 12',
+};
+
+function roomSuggestionToId(s) {
+  if (!s) return '';
+  const l = s.toLowerCase();
+  if (l.includes('küche')  || l.includes('kuche'))                        return 'kueche';
+  if (l.includes('bad')    || l.includes('bath'))                         return 'bad';
+  if (l.includes('wohn'))                                                  return 'wohnzimmer';
+  if (l.includes('schlaf'))                                                return 'schlafzimmer';
+  if (l.includes('büro')   || l.includes('buro') || l.includes('office')) return 'buero';
+  if (l.includes('keller') || l.includes('basement'))                     return 'keller';
+  if (l.includes('garage'))                                                return 'garage';
+  return 'sonstiges';
+}
+
+function getDevicePlaceholderImg(name) {
+  const n = (name || '').toLowerCase();
+  const match = DEVICE_PHOTOS.find(d => d.keys.some(k => n.includes(k)));
+  const id = match ? match.id : 'photo-1558618666-fcd25c85cd64';
+  return `https://images.unsplash.com/${id}?auto=format&fit=crop&w=480&h=220&q=80`;
+}
+
+// ─── Anthropic API base caller ────────────────────────────────────────────────
+// All JS modules call this instead of writing their own fetch.
+async function callAnthropic(body) {
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': state.apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+// ─── Image resizer (shared by add-device and agents) ─────────────────────────
+function resizeImage(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = e => {
+      const img = new Image();
+      img.onerror = reject;
+      img.onload = () => {
+        const MAX = 1024;
+        let { width: w, height: h } = img;
+        if (w > MAX || h > MAX) {
+          if (w >= h) { h = Math.round(h * MAX / w); w = MAX; }
+          else        { w = Math.round(w * MAX / h); h = MAX; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.78);
+        resolve({ dataUrl, base64: dataUrl.split(',')[1], mime: 'image/jpeg' });
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
