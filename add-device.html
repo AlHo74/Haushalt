@@ -11,6 +11,7 @@
 
 <div id="app"></div>
 
+<script src="js/icons.js"></script>
 <script src="js/app.js"></script>
 <script>
 // ─── Page state ───────────────────────────────────────────────────────────────
@@ -262,7 +263,7 @@ function buildHtml() {
               <select id="f-room" required
                 style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:12px 14px;font-size:14px;color:${form.room ? 'var(--text)' : 'var(--muted)'};outline:none;box-sizing:border-box;background:#fff;appearance:none;-webkit-appearance:none;background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6,9 12,15 18,9'/%3E%3C/svg%3E\");background-repeat:no-repeat;background-position:right 14px center;">
                 <option value="">Raum auswählen</option>
-                ${ROOMS.map(r => `<option value="${r.id}" ${form.room === r.id ? 'selected' : ''}>${r.icon} ${r.label}</option>`).join('')}
+                ${ROOMS.map(r => `<option value="${r.id}" ${form.room === r.id ? 'selected' : ''}>${r.label}</option>`).join('')}
               </select>
             </div>
           </div>

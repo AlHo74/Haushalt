@@ -10,6 +10,7 @@
 
 <div id="app" style="max-width:480px;margin:0 auto;padding:2rem 1.25rem calc(2rem + env(safe-area-inset-bottom));"></div>
 
+<script src="js/icons.js"></script>
 <script src="js/app.js"></script>
 <script src="js/agents.js"></script>
 <script>
@@ -113,7 +114,7 @@ function renderAgentCard(agentDef, status) {
     <div id="card-${agentDef.key}" class="agent-card"
       style="background:#fff;border-radius:12px;padding:1rem 1.25rem;display:flex;align-items:center;gap:14px;
              border-left:3px solid ${borderColor};box-shadow:0 1px 3px rgba(0,0,0,0.06);transition:border-left-color 0.3s ease;">
-      <div style="width:40px;height:40px;border-radius:10px;background:var(--bg);display:flex;align-items:center;justify-content:center;font-size:20px;opacity:${iconOpacity};flex-shrink:0;transition:opacity 0.3s ease;">
+      <div style="width:40px;height:40px;border-radius:10px;background:var(--bg);display:flex;align-items:center;justify-content:center;color:var(--primary);opacity:${iconOpacity};flex-shrink:0;transition:opacity 0.3s ease;">
         ${agentDef.icon}
       </div>
       <div style="flex:1;min-width:0;">
@@ -149,7 +150,7 @@ function updateAgentCard(key, status) {
   const card         = document.getElementById(`card-${key}`);
   const statusTextEl = document.getElementById(`status-text-${key}`);
   const indicatorEl  = document.getElementById(`indicator-${key}`);
-  const iconEl       = card?.querySelector('div[style*="font-size:20px"]');
+  const iconEl       = card?.querySelector('div[style*="border-radius:10px"]');
   if (!card) return;
 
   const borderColor = { pending:'#E8E8E4', running:'#4CAF82', done:'#1B5E45', error:'#fca5a5' }[status];

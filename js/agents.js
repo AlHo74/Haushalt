@@ -1,11 +1,11 @@
 // ─── Agent metadata (for UI rendering) ───────────────────────────────────────
 const AGENT_DEFS = [
-  { key: 'manual',       label: 'Bedienungsanleitung', icon: '📖' },
-  { key: 'faqs',         label: 'FAQs',                icon: '❓' },
-  { key: 'known_issues', label: 'Bekannte Probleme',   icon: '🔧' },
-  { key: 'hacks',        label: 'Hacks & Tipps',       icon: '💡' },
-  { key: 'spare_parts',  label: 'Ersatzteile',         icon: '🔩' },
-  { key: 'energy',       label: 'Energieeffizienz',    icon: '⚡' },
+  { key: 'manual',       label: 'Bedienungsanleitung', icon: ICONS['support-manual'] },
+  { key: 'faqs',         label: 'FAQs',                icon: ICONS['support-faq'] },
+  { key: 'known_issues', label: 'Bekannte Probleme',   icon: ICONS['support-problems'] },
+  { key: 'hacks',        label: 'Hacks & Tipps',       icon: ICONS['support-tips'] },
+  { key: 'spare_parts',  label: 'Ersatzteile',         icon: ICONS['support-spare-parts'] },
+  { key: 'energy',       label: 'Energieeffizienz',    icon: ICONS['support-energy-efficiency'] },
 ];
 
 // ─── Agent 1: Manufacturer URL patterns (verified, curated) ───────────────────
