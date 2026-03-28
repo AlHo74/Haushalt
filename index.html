@@ -16,15 +16,6 @@
 <script>
 // ─── Page state ───────────────────────────────────────────────────────────────
 let selectedRoom = null;
-let appMode = localStorage.getItem('hg_mode') || 'privathaushalt';
-
-// ─── Mode toggle ──────────────────────────────────────────────────────────────
-function setMode(m) {
-  appMode = m;
-  localStorage.setItem('hg_mode', m);
-  renderPage();
-}
-
 // ─── Room filter ──────────────────────────────────────────────────────────────
 function setRoomFilter(roomId) {
   selectedRoom = (selectedRoom === roomId) ? null : roomId;
@@ -67,7 +58,6 @@ function renderPage() {
   document.getElementById('app').innerHTML =
     renderHeader() +
     renderHero() +
-    renderModeToggle() +
     renderRoomCards() +
     renderDeviceList(devices) +
     renderFab() +
@@ -93,20 +83,8 @@ function renderHero() {
   return `
     <div style="padding:1.25rem 1.25rem 0.5rem;">
       <p style="font-size:11px;text-transform:uppercase;letter-spacing:0.12em;color:var(--primary-light);font-weight:600;margin:0 0 6px;">SYSTEMÜBERSICHT</p>
-      <h1 style="font-size:34px;font-weight:800;line-height:1.15;color:var(--text);margin:0;">Dein Zuhause,<br>perfekt kuratiert.</h1>
-    </div>`;
-}
-
-// ── Mode toggle ───────────────────────────────────────────────────────────────
-function renderModeToggle() {
-  const active = 'background:var(--primary);color:white;border-radius:20px;padding:8px 20px;font-size:14px;font-weight:500;border:none;cursor:pointer;';
-  const inact  = 'background:transparent;color:var(--muted);border-radius:20px;padding:8px 20px;font-size:14px;font-weight:500;border:none;cursor:pointer;';
-  return `
-    <div style="padding:1rem 1.25rem 0.75rem;">
-      <div style="background:#E8E8E4;border-radius:24px;padding:3px;display:inline-flex;">
-        <button onclick="setMode('privathaushalt')" style="${appMode==='privathaushalt'?active:inact}">Privathaushalt</button>
-        <button onclick="setMode('vermieter')"      style="${appMode==='vermieter'?active:inact}">Vermieter</button>
-      </div>
+      <h1 style="font-size:34px;font-weight:800;line-height:1.15;color:var(--text);margin:0 0 8px;">Dein Zuhause,<br>perfekt kuratiert.</h1>
+      <p style="font-size:14px;color:var(--muted);margin:0;">Alle deine Geräte auf einen Blick</p>
     </div>`;
 }
 
