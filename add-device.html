@@ -5,9 +5,80 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Gerät hinzufügen – Haushalt-Genie</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body class="min-h-screen font-sans" style="background:var(--bg);">
+
+<div id="barcode-overlay" style="display:none; position:fixed; inset:0;
+  background:rgba(0,0,0,0.92); z-index:999; flex-direction:column;
+  align-items:center; justify-content:center;">
+
+  <div style="width:100%; max-width:480px; padding:1.5rem;">
+    <!-- Header -->
+    <div style="display:flex; align-items:center; gap:12px; margin-bottom:1.5rem;">
+      <button onclick="closeBarcodeScanner()"
+        style="background:rgba(255,255,255,0.1); border:none; border-radius:50%;
+        width:40px; height:40px; color:white; font-size:20px; cursor:pointer;
+        display:flex; align-items:center; justify-content:center;">✕</button>
+      <div style="color:white; font-size:17px; font-weight:700;">Barcode scannen</div>
+    </div>
+
+    <!-- Camera viewfinder -->
+    <div style="position:relative; border-radius:16px; overflow:hidden;
+      background:#000; aspect-ratio:1;">
+      <div id="barcode-reader"></div>
+      <!-- Scan frame overlay -->
+      <div style="position:absolute; inset:0; display:flex; align-items:center;
+        justify-content:center; pointer-events:none;">
+        <div style="width:70%; aspect-ratio:2.5; border:2px solid #4CAF82;
+          border-radius:8px; box-shadow:0 0 0 9999px rgba(0,0,0,0.4);
+          position:relative;">
+          <!-- Animated scan line -->
+          <div id="scan-line" style="position:absolute; left:0; right:0; height:2px;
+            background:linear-gradient(90deg,transparent,#4CAF82,transparent);
+            animation:scanline 2s linear infinite; top:0;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Hint text -->
+    <p style="color:rgba(255,255,255,0.6); text-align:center; font-size:13px;
+      margin-top:1rem;">Halte die Kamera auf den Barcode der Verpackung</p>
+
+    <!-- Status message -->
+    <div id="barcode-status" style="color:white; text-align:center;
+      font-size:14px; margin-top:0.75rem; min-height:20px;"></div>
+
+    <!-- Manual EAN input as fallback -->
+    <div style="margin-top:1.5rem; border-top:1px solid rgba(255,255,255,0.1);
+      padding-top:1.25rem;">
+      <p style="color:rgba(255,255,255,0.5); font-size:12px;
+        text-align:center; margin-bottom:10px;">Barcode nicht lesbar?</p>
+      <div style="display:flex; gap:8px;">
+        <input id="manual-ean" type="text" inputmode="numeric"
+          placeholder="EAN manuell eingeben..."
+          style="flex:1; background:rgba(255,255,255,0.1); border:1px solid
+          rgba(255,255,255,0.2); border-radius:10px; padding:10px 12px;
+          color:white; font-size:14px; outline:none;"
+          onkeydown="if(event.key==='Enter') lookupEAN(this.value)">
+        <button onclick="lookupEAN(document.getElementById('manual-ean').value)"
+          style="background:#4CAF82; border:none; border-radius:10px;
+          padding:10px 16px; color:white; font-weight:600; cursor:pointer;">
+          Suchen
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+@keyframes scanline {
+  0%   { top: 0%; }
+  50%  { top: 90%; }
+  100% { top: 0%; }
+}
+</style>
 
 <div id="app"></div>
 
@@ -369,8 +440,107 @@ function clearPhoto() {
   renderPage();
 }
 
-// ─── Barcode scanner (stub) ───────────────────────────────────────────────────
-function openBarcodeScanner() { showToast('Barcode-Scanner kommt bald ✨'); }
+// ─── Barcode scanner ──────────────────────────────────────────────────────────
+let html5QrScanner = null;
+
+function openBarcodeScanner() {
+  const overlay = document.getElementById('barcode-overlay');
+  overlay.style.display = 'flex';
+
+  setTimeout(() => {
+    html5QrScanner = new Html5Qrcode('barcode-reader');
+    html5QrScanner.start(
+      { facingMode: 'environment' },
+      { fps: 10, qrbox: { width: 250, height: 100 } },
+      (decodedText) => {
+        setBarStatus('✓ Barcode erkannt — suche Gerät...');
+        html5QrScanner.stop();
+        lookupEAN(decodedText);
+      },
+      () => {}
+    ).catch(err => {
+      setBarStatus('Kamera nicht verfügbar. Bitte EAN manuell eingeben.');
+      console.warn('Scanner error:', err);
+    });
+  }, 300);
+}
+
+function closeBarcodeScanner() {
+  if (html5QrScanner) {
+    html5QrScanner.stop().catch(() => {});
+    html5QrScanner = null;
+  }
+  document.getElementById('barcode-overlay').style.display = 'none';
+  document.getElementById('barcode-status').textContent = '';
+  document.getElementById('manual-ean').value = '';
+}
+
+function setBarStatus(msg) {
+  document.getElementById('barcode-status').textContent = msg;
+}
+
+async function lookupEAN(ean) {
+  if (!ean || ean.length < 8) {
+    setBarStatus('Bitte eine gültige EAN eingeben (mind. 8 Stellen).');
+    return;
+  }
+
+  setBarStatus('Suche Gerät für EAN ' + ean + ' ...');
+
+  if (!state.apiKey) {
+    setBarStatus('Kein API-Key — bitte in Einstellungen konfigurieren.');
+    return;
+  }
+
+  try {
+    const data = await callAnthropic({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 300,
+      messages: [{ role: 'user', content:
+        `A product has EAN/barcode: ${ean}
+Identify this household appliance if you know it.
+Return ONLY valid JSON:
+{
+  "found": true,
+  "name": "Gerätename auf Deutsch",
+  "brand": "Hersteller",
+  "model": "Modellnummer",
+  "category": "Kategorie auf Deutsch",
+  "confidence": "high|medium|low"
+}
+If you don't know this EAN, return: { "found": false }
+Do not guess. Only return found:true if you are confident.`
+      }]
+    });
+
+    const text  = data.content[0].text;
+    const match = text.match(/\{[\s\S]*\}/);
+    if (!match) throw new Error('Keine Antwort');
+    const result = JSON.parse(match[0]);
+
+    if (result.found && result.confidence !== 'low') {
+      closeBarcodeScanner();
+      form = {
+        ...form,
+        name:   result.name  || '',
+        marke:  result.brand || '',
+        modell: result.model || '',
+        scanError: null,
+        recognitionConfidence: result.confidence,
+        showTSBanner: !result.model,
+      };
+      renderPage();
+      showToast('Gerät gefunden: ' + result.brand + ' ' + result.model + ' ✓');
+    } else {
+      setBarStatus(
+        'Gerät für EAN ' + ean + ' nicht erkannt. ' +
+        'Bitte Foto aufnehmen oder Modell manuell eingeben.'
+      );
+    }
+  } catch (err) {
+    setBarStatus('Fehler bei der Suche: ' + err.message);
+  }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TYPENSCHILD-FINDER WIZARD
@@ -795,9 +965,6 @@ function tsBack() {
   tsWizard = { ...tsWizard, step: tsWizard.step - 1 };
   renderTSOverlay();
 }
-
-// ─── Barcode scanner (stub) ───────────────────────────────────────────────────
-function openBarcodeScanner() { showToast('Barcode-Scanner kommt bald ✨'); }
 
 // ─── Save ─────────────────────────────────────────────────────────────────────
 function handleSave(e) {
