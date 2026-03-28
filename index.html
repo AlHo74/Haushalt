@@ -19,7 +19,11 @@ let selectedRoom = null;
 // ─── Room filter ──────────────────────────────────────────────────────────────
 function setRoomFilter(roomId) {
   selectedRoom = (selectedRoom === roomId) ? null : roomId;
+  const scroller = document.querySelector('[data-room-scroller]');
+  const scrollLeft = scroller ? scroller.scrollLeft : 0;
   renderPage();
+  const newScroller = document.querySelector('[data-room-scroller]');
+  if (newScroller) newScroller.scrollLeft = scrollLeft;
 }
 
 // ─── Device status badge ──────────────────────────────────────────────────────
@@ -107,7 +111,7 @@ function renderRoomCards() {
 
   return `
     <div style="padding:0 1.25rem 1rem;">
-      <div style="display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;padding-bottom:4px;">
+      <div data-room-scroller style="display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;padding-bottom:4px;">
         ${cards}
       </div>
     </div>`;
