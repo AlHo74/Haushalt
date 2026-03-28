@@ -159,13 +159,25 @@ const TS_CATEGORIES = [
   'Staubsauger','Sonstiges',
 ];
 
-const TS_ICONS = {
-  'Waschmaschine':'🫧','Wäschetrockner':'🌀','Geschirrspüler':'🍽️',
-  'Kühlschrank':'🧊','Gefrierschrank':'❄️','Gefriertruhe':'📦',
-  'Herd/Backofen':'🔥','Kochfeld':'⭕','Mikrowelle':'📡',
-  'Kaffeemaschine':'☕','Dunstabzugshaube':'💨','Klimaanlage':'🌡️',
-  'Staubsauger':'🌪️','Sonstiges':'🔌',
+const APPLIANCE_ICONS = {
+  'Waschmaschine':    'wash-machine',
+  'Wäschetrockner':   'wash-tumble-dry',
+  'Geschirrspüler':   'tools-kitchen-2',
+  'Kühlschrank':      'fridge',
+  'Gefrierschrank':   'snowflake',
+  'Gefriertruhe':     'package',
+  'Herd/Backofen':    'grill',
+  'Kochfeld':         'chef-hat',
+  'Mikrowelle':       'microwave',
+  'Kaffeemaschine':   'coffee',
+  'Dunstabzugshaube': 'air-conditioning',
+  'Klimaanlage':      'air-conditioning',
+  'Staubsauger':      'vacuum-cleaner',
+  'Sonstiges':        'plug',
 };
+function applianceIcon(kat, size) {
+  return icon(APPLIANCE_ICONS[kat] || 'plug', size);
+}
 
 // ─── SVGs ─────────────────────────────────────────────────────────────────────
 const SVG = {
@@ -205,7 +217,7 @@ function buildHtml() {
         <div style="position:absolute;bottom:0;left:0;right:0;background:linear-gradient(to top,rgba(0,0,0,.5),transparent);padding:6px 10px;">
           <span style="color:#fff;font-size:11px;font-weight:600;">✓ Foto gespeichert</span>
         </div>`}
-      ${form.scanError ? `<div style="position:absolute;bottom:0;left:0;right:0;background:rgba(220,38,38,.9);padding:5px 10px;font-size:12px;color:#fff;">⚠️ ${escHtml(form.scanError)}</div>` : ''}
+      ${form.scanError ? `<div style="position:absolute;bottom:0;left:0;right:0;background:rgba(220,38,38,.9);padding:5px 10px;font-size:12px;color:#fff;display:flex;align-items:center;gap:5px;"><span style="display:inline-flex;flex-shrink:0;">${icon('alert-triangle',14)}</span> ${escHtml(form.scanError)}</div>` : ''}
     </div>` : '';
 
   // AI hint OR low-confidence TS banner
@@ -214,8 +226,8 @@ function buildHtml() {
     if (form.showTSBanner) {
       hintHtml = `
         <div style="background:#fffbeb;border:1.5px solid #fcd34d;border-radius:10px;padding:12px 14px;margin-bottom:14px;">
-          <div style="font-size:13px;font-weight:600;color:#92400e;margin-bottom:6px;">
-            ⚠️ Modell nicht eindeutig erkannt
+          <div style="font-size:13px;font-weight:600;color:#92400e;margin-bottom:6px;display:flex;align-items:center;gap:5px;">
+            <span style="display:inline-flex;">${icon('alert-triangle',14)}</span> Modell nicht eindeutig erkannt
           </div>
           <div style="font-size:12px;color:#92400e;margin-bottom:10px;">
             Fotografiere das Typenschild für eine genaue Identifikation.
@@ -325,7 +337,7 @@ function buildHtml() {
             <!-- Typenschild-Finder button (always available) -->
             <button type="button" onclick="openTSWizard()"
               style="display:flex;align-items:center;gap:6px;background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;padding:4px 0;margin-bottom:14px;">
-              ${SVG.search} 🔍 Typenschild scannen
+              ${SVG.search} Typenschild scannen
             </button>
 
             <!-- Raum -->
@@ -624,12 +636,12 @@ function buildTSHtml() {
 function buildTSStep1() {
   const kat = tsWizard.kategorie;
   const hintBanner = (form.photoNextHint)
-    ? `<div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:10px;padding:10px 12px;font-size:12px;color:#92400e;margin-bottom:16px;">💡 KI-Tipp: ${form.photoNextHint}</div>`
+    ? `<div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:10px;padding:10px 12px;font-size:12px;color:#92400e;margin-bottom:16px;display:flex;align-items:center;gap:5px;"><span style="display:inline-flex;flex-shrink:0;">${icon('bulb',14)}</span> <strong>KI-Tipp:</strong> ${form.photoNextHint}</div>`
     : '';
   return `
     ${hintBanner}
     <div style="text-align:center;padding:1rem 0 1.5rem;">
-      <div style="font-size:48px;margin-bottom:10px;">${TS_ICONS[kat] || '🔌'}</div>
+      <div style="width:48px;height:48px;margin:0 auto 10px;color:var(--primary);">${applianceIcon(kat, 48)}</div>
       <div style="font-size:20px;font-weight:800;color:var(--text);margin-bottom:6px;">Kategorie bestätigen</div>
       <div style="font-size:13px;color:var(--muted);">Haben wir dein Gerät richtig erkannt?</div>
     </div>
@@ -638,7 +650,7 @@ function buildTSStep1() {
       <label style="font-size:10px;font-weight:700;letter-spacing:0.1em;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:8px;">Gerätekategorie</label>
       <select id="ts-kategorie" onchange="tsWizard.kategorie=this.value;renderTSOverlay();"
         style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:12px 14px;font-size:15px;font-weight:600;color:var(--text);outline:none;box-sizing:border-box;background:#fff;appearance:none;-webkit-appearance:none;background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6,9 12,15 18,9'/%3E%3C/svg%3E\");background-repeat:no-repeat;background-position:right 14px center;">
-        ${TS_CATEGORIES.map(c => `<option value="${c}" ${c===kat?'selected':''}>${TS_ICONS[c]} ${c}</option>`).join('')}
+        ${TS_CATEGORIES.map(c => `<option value="${c}" ${c===kat?'selected':''}>${c}</option>`).join('')}
       </select>
     </div>
 
@@ -652,11 +664,9 @@ function buildTSStep1() {
 function buildTSStep2() {
   const kat  = tsWizard.kategorie;
   const pos  = TYPENSCHILD_POSITIONEN[kat] || TYPENSCHILD_POSITIONEN['Sonstiges'];
-  const icon = TS_ICONS[kat] || '🔌';
-
   return `
     <div style="text-align:center;padding:0.5rem 0 1.25rem;">
-      <div style="font-size:36px;margin-bottom:8px;">${icon}</div>
+      <div style="width:48px;height:48px;margin:0 auto 8px;color:var(--primary);">${applianceIcon(kat, 48)}</div>
       <div style="font-size:20px;font-weight:800;color:var(--text);margin-bottom:4px;">Wo ist das Typenschild?</div>
       <div style="font-size:13px;color:var(--muted);">${escHtml(kat)}</div>
     </div>
@@ -678,7 +688,7 @@ function buildTSStep2() {
       </div>
 
       <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:10px;padding:10px 12px;">
-        <div style="font-size:13px;color:#92400e;line-height:1.5;">💡 <strong>Tipp:</strong> ${escHtml(pos.tip)}</div>
+        <div style="font-size:13px;color:#92400e;line-height:1.5;display:flex;align-items:flex-start;gap:5px;"><span style="display:inline-flex;flex-shrink:0;margin-top:1px;">${icon('bulb',14)}</span><span><strong>Tipp:</strong> ${escHtml(pos.tip)}</span></div>
       </div>
     </div>
 
@@ -792,7 +802,7 @@ function buildTSStep3() {
 
   return `
     <div style="text-align:center;padding:0.5rem 0 1.25rem;">
-      <div style="font-size:36px;margin-bottom:8px;">📷</div>
+      <div style="width:48px;height:48px;margin:0 auto 8px;color:var(--primary);">${icon('camera', 48)}</div>
       <div style="font-size:20px;font-weight:800;color:var(--text);margin-bottom:4px;">Typenschild fotografieren</div>
       <div style="font-size:13px;color:var(--muted);">Fotografiere das Typenschild so nah wie möglich — alle Texte müssen lesbar sein.</div>
     </div>
@@ -801,13 +811,13 @@ function buildTSStep3() {
 
     ${tsError && unreadable ? `
       <div style="background:#fffbeb;border:1.5px solid #fcd34d;border-radius:10px;padding:12px 14px;margin-bottom:14px;">
-        <div style="font-size:13px;font-weight:600;color:#92400e;margin-bottom:4px;">⚠️ Typenschild nicht lesbar</div>
+        <div style="font-size:13px;font-weight:600;color:#92400e;margin-bottom:4px;display:flex;align-items:center;gap:5px;"><span style="display:inline-flex;">${icon('alert-triangle',14)}</span> Typenschild nicht lesbar</div>
         <div style="font-size:12px;color:#92400e;">Bitte näher heranfahren und erneut versuchen.</div>
       </div>` : ''}
 
     ${tsError && !unreadable ? `
-      <div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:10px;padding:12px 14px;margin-bottom:14px;font-size:13px;color:#991b1b;">
-        ⚠️ ${escHtml(tsError)}
+      <div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:10px;padding:12px 14px;margin-bottom:14px;font-size:13px;color:#991b1b;display:flex;align-items:center;gap:5px;">
+        <span style="display:inline-flex;flex-shrink:0;">${icon('alert-triangle',14)}</span> ${escHtml(tsError)}
       </div>` : ''}
 
     <div style="background:#fff;border-radius:14px;padding:1rem;box-shadow:0 1px 3px rgba(0,0,0,0.06);margin-bottom:14px;">
@@ -893,14 +903,14 @@ function buildTSStep4() {
 
   return `
     <div style="text-align:center;padding:0.5rem 0 1.25rem;">
-      <div style="font-size:36px;margin-bottom:8px;">✅</div>
+      <div style="width:48px;height:48px;margin:0 auto 8px;color:var(--primary);">${icon('circle-check', 48)}</div>
       <div style="font-size:20px;font-weight:800;color:var(--text);margin-bottom:4px;">Daten prüfen & bestätigen</div>
       <div style="font-size:13px;color:var(--muted);">Alle Felder sind bearbeitbar.</div>
     </div>
 
     ${r.confidence === 'low' ? `
-      <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:12px;color:#92400e;">
-        ⚠️ Niedrige Erkennungssicherheit — bitte Daten prüfen.
+      <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:12px;color:#92400e;display:flex;align-items:center;gap:5px;">
+        <span style="display:inline-flex;flex-shrink:0;">${icon('alert-triangle',14)}</span> Niedrige Erkennungssicherheit — bitte Daten prüfen.
       </div>` : ''}
 
     <div style="background:#fff;border-radius:14px;padding:1.25rem;box-shadow:0 1px 3px rgba(0,0,0,0.06);margin-bottom:14px;">
@@ -924,7 +934,7 @@ function buildTSStep4() {
     </button>
     <button onclick="closeTSWizard()"
       style="width:100%;background:#fff;border:1.5px solid var(--border);border-radius:14px;padding:14px;font-size:14px;font-weight:600;color:var(--text);cursor:pointer;">
-      ✏️ Manuell korrigieren
+      <span style="display:inline-flex;vertical-align:middle;margin-right:4px;">${icon('pencil',14)}</span> Manuell korrigieren
     </button>
 
     <!-- PHASE 2 TODO:
