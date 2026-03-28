@@ -7,6 +7,8 @@ const ROOMS = [
   { id:'buero',        label:'Büro',          iconKey:'room-study',     icon: ICONS['room-study'] },
   { id:'keller',       label:'Keller',        iconKey:'room-cellar',    icon: ICONS['room-cellar'] },
   { id:'garage',       label:'Garage',        iconKey:'room-garage',    icon: ICONS['room-garage'] },
+  { id:'abstellraum',  label:'Abstellraum',   iconKey:'room-storage',   icon: ICONS['room-storage'] },
+  { id:'kinderzimmer', label:'Kinderzimmer',  iconKey:'room-kids',      icon: ICONS['room-kids'] },
   { id:'sonstiges',    label:'Sonstiges',     iconKey:'room-outdoor',   icon: ICONS['room-outdoor'] },
 ];
 
@@ -190,6 +192,8 @@ function roomSuggestionToId(s) {
   if (l.includes('büro')   || l.includes('buro') || l.includes('office')) return 'buero';
   if (l.includes('keller') || l.includes('basement'))                     return 'keller';
   if (l.includes('garage'))                                                return 'garage';
+  if (l.includes('abstellraum') || l.includes('abstell') || l.includes('storage')) return 'abstellraum';
+  if (l.includes('kinderzimmer') || l.includes('kinder') || l.includes('kind'))    return 'kinderzimmer';
   return 'sonstiges';
 }
 
