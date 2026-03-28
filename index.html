@@ -140,7 +140,7 @@ function renderDeviceList(devices) {
   if (state.devices.length === 0) {
     return `
       <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:5rem 2rem;text-align:center;">
-        <div style="font-size:3.5rem;margin-bottom:1rem;">🏠</div>
+        <div style="width:64px;height:64px;margin:0 auto 1rem;color:var(--muted);display:flex;align-items:center;justify-content:center;">${icon('home',64)}</div>
         <h2 style="font-size:1.1rem;font-weight:600;color:var(--text);margin:0 0 6px;">Noch keine Geräte</h2>
         <p style="font-size:0.85rem;color:var(--muted);margin:0 0 1.5rem;">Füge dein erstes Haushaltsgerät hinzu, um zu starten.</p>
         <a href="add-device.html" style="background:var(--primary);color:white;padding:0.65rem 1.5rem;border-radius:12px;font-weight:600;font-size:0.875rem;text-decoration:none;">+ Gerät hinzufügen</a>
