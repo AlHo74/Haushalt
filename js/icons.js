@@ -25,7 +25,11 @@ var ICONS = {
 
 function icon(key, size) {
   var svg = ICONS[key] || '';
-  if (!svg || !size || size === 24) return svg;
+  if (!svg) return '';
+  // Remove Tabler bounding-box stroke artifact:
+  // <path stroke="currentColor" d="M0 0h24v24H0z" fill="none" />
+  svg = svg.replace(/<path[^>]*d="M0 0h24v24H0z"[^>]*\/>/g, '');
+  if (!size || size === 24) return svg;
   return svg.replace(/width="[0-9]+"/, 'width="' + size + '"')
             .replace(/height="[0-9]+"/, 'height="' + size + '"');
 }
