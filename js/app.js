@@ -101,14 +101,48 @@ const TYPENSCHILD_POSITIONEN = {
 
 // ─── Shared state (loaded once from localStorage per page) ───────────────────
 const state = {
-  devices: JSON.parse(localStorage.getItem('hg_devices') || '[]'),
-  chats:   JSON.parse(localStorage.getItem('hg_chats')   || '{}'),
-  apiKey:  localStorage.getItem('hg_apikey') || '',
+  devices:       JSON.parse(localStorage.getItem('hg_devices')       || '[]'),
+  chats:         JSON.parse(localStorage.getItem('hg_chats')         || '{}'),
+  apiKey:        localStorage.getItem('hg_apikey') || '',
+  installateure: JSON.parse(localStorage.getItem('hg_installateure') || '[]'),
 };
 
 // ─── Persistence ──────────────────────────────────────────────────────────────
-function saveDevices() { localStorage.setItem('hg_devices', JSON.stringify(state.devices)); }
-function saveChats()   { localStorage.setItem('hg_chats',   JSON.stringify(state.chats));   }
+function saveDevices()      { localStorage.setItem('hg_devices',       JSON.stringify(state.devices));       }
+function saveChats()        { localStorage.setItem('hg_chats',         JSON.stringify(state.chats));         }
+function saveInstallateure(){ localStorage.setItem('hg_installateure', JSON.stringify(state.installateure)); }
+
+function findInstallateurByName(name) {
+  if (!name) return null;
+  const q = name.toLowerCase().trim();
+  return state.installateure.find(i =>
+    i.firmenname.toLowerCase().includes(q) || q.includes(i.firmenname.toLowerCase())
+  );
+}
+
+function upsertInstallateur(data) {
+  const existing = findInstallateurByName(data.firmenname);
+  if (existing) {
+    ['adresse','telefon','email','website'].forEach(k => { if (data[k]) existing[k] = data[k]; });
+    existing.letzterKontakt = new Date().toISOString().slice(0,10);
+    saveInstallateure();
+    return existing.id;
+  }
+  const entry = {
+    id:             'inst_' + Date.now(),
+    firmenname:     data.firmenname || '',
+    adresse:        data.adresse    || '',
+    telefon:        data.telefon    || '',
+    email:          data.email      || '',
+    website:        data.website    || '',
+    notizen:        '',
+    erstellt:       new Date().toISOString().slice(0,10),
+    letzterKontakt: new Date().toISOString().slice(0,10),
+  };
+  state.installateure.push(entry);
+  saveInstallateure();
+  return entry.id;
+}
 
 // ─── Navigation (MPA: href-based) ────────────────────────────────────────────
 function navigate(page, id) {

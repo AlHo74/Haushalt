@@ -465,6 +465,32 @@ function renderMeinGeraetTab(d) {
         <div>${lbl('Wartungsnotizen')}<textarea rows="3" placeholder="z.B. Filter gewechselt, Kalk entfernt …" oninput="saveMD('notizen',this.value)" style="width:100%;border:1.5px solid var(--border);border-radius:10px;padding:10px 14px;font-size:14px;color:var(--text);outline:none;resize:none;box-sizing:border-box;background:#fff;">${escHtml(md.notizen||'')}</textarea></div>
 
         <div style="background:var(--bg);border-radius:10px;padding:10px 12px;">
+          <p style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:0 0 10px;">Wartungsassistent</p>
+
+          ${md.installateur ? `
+            <div style="background:#fff;border:1.5px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:10px;font-size:13px;line-height:1.7;color:var(--text);">
+              <div style="font-weight:700;font-size:14px;margin-bottom:4px;">${escHtml(md.installateur.firmenname||'')}</div>
+              ${md.installateur.adresse ? `<div>${escHtml(md.installateur.adresse)}</div>` : ''}
+              ${md.installateur.telefon ? `<div><a href="tel:${escHtml(md.installateur.telefon)}" style="color:var(--primary);text-decoration:none;">${escHtml(md.installateur.telefon)}</a></div>` : ''}
+              ${md.installateur.email   ? `<div><a href="mailto:${escHtml(md.installateur.email)}" style="color:var(--primary);text-decoration:none;">${escHtml(md.installateur.email)}</a></div>` : ''}
+              ${md.installateur.website ? `<div><a href="${escHtml(md.installateur.website)}" target="_blank" rel="noopener" style="color:var(--primary);text-decoration:none;">${escHtml(md.installateur.website)}</a></div>` : ''}
+              <div style="display:flex;align-items:center;gap:12px;margin-top:8px;">
+                <button onclick="saveMD('installateur',null);renderPage()" style="font-size:12px;color:#c0392b;background:none;border:none;cursor:pointer;padding:0;">Löschen</button>
+                ${md.installateur_id ? `<a href="installateure.html?id=${md.installateur_id}" style="font-size:12px;color:var(--primary);font-weight:600;">Vollständiges Profil →</a>` : ''}
+              </div>
+            </div>
+          ` : ''}
+
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+            <span style="font-size:13px;color:var(--muted);flex:1;">Wartungsetikett fotografieren &amp; auslesen</span>
+            <span style="font-size:12px;font-weight:600;color:var(--primary);background:rgba(27,94,69,0.08);padding:5px 12px;border-radius:8px;white-space:nowrap;">Etikett scannen</span>
+            <input type="file" accept="image/*" capture="environment" style="display:none;" onchange="handleWartungsetikett(this)">
+          </label>
+
+          <div id="wartung-preview" style="display:none;margin-top:12px;background:#fff;border:1.5px solid var(--border);border-radius:10px;padding:12px 14px;font-size:13px;"></div>
+        </div>
+
+        <div style="background:var(--bg);border-radius:10px;padding:10px 12px;">
           <p style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:0 0 8px;">Dokumente</p>
           <div style="display:flex;flex-direction:column;gap:8px;">
             ${renderDocField(d, 'rechnung', '🧾 Rechnung / Kassenbon')}
@@ -535,6 +561,133 @@ function renderChatBar() {
         </button>
       </div>
     </div>`;
+}
+
+// ─── Wartungsassistent ────────────────────────────────────────────────────────
+async function handleWartungsetikett(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const preview = document.getElementById('wartung-preview');
+  preview.style.display = 'block';
+  preview.innerHTML = '<div style="color:var(--muted);font-size:13px;">Etikett wird analysiert …</div>';
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    const base64 = e.target.result.split(',')[1];
+    try {
+      const result = await analyzeWartungsetikett(base64, file.type || 'image/jpeg');
+      showWartungPreview(result);
+    } catch (err) {
+      preview.innerHTML = `<div style="color:#c0392b;font-size:13px;">Fehler: ${err.message}</div>`;
+    }
+  };
+  reader.readAsDataURL(file);
+  input.value = '';
+}
+
+async function analyzeWartungsetikett(base64, mimeType) {
+  const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key': state.apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+      'content-type': 'application/json'
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 600,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'image', source: { type: 'base64', media_type: mimeType, data: base64 } },
+          { type: 'text', text: `You are analyzing an Austrian heating system maintenance label (Wartungsetikett).
+
+Extract the following and return ONLY valid JSON, no explanation:
+
+1. INSTALLER CONTACT DETAILS visible on the label:
+   - firmenname: company/installer name (string or null)
+   - adresse: full address (string or null)
+   - telefon: phone number with country code if visible (string or null)
+   - email: email address (string or null)
+   - website: website URL (string or null)
+
+2. NEXT MAINTENANCE DATE from the concentric circle dial:
+   - Austrian labels show a circular dial where the technician marks the next service month and year by punching or crossing a segment.
+   - The outer ring typically shows months (1–12 or Jan–Dez), the inner ring shows years (e.g. 2025, 2026 …).
+   - Look for a punched hole, X mark, or highlighted segment.
+   - naechsteWartungMonat: integer 1–12 (or null)
+   - naechsteWartungJahr: 4-digit integer (or null)
+   - hinweis: short note in German if the date was unclear or the label was unreadable (string or null)
+
+Return exactly:
+{
+  "firmenname": null,
+  "adresse": null,
+  "telefon": null,
+  "email": null,
+  "website": null,
+  "naechsteWartungMonat": null,
+  "naechsteWartungJahr": null,
+  "hinweis": null
+}` }
+        ]
+      }]
+    })
+  });
+  if (!resp.ok) throw new Error(`API ${resp.status}`);
+  const data = await resp.json();
+  const text = data.content[0].text.trim();
+  const json = text.startsWith('{') ? text : text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1);
+  return JSON.parse(json);
+}
+
+function showWartungPreview(r) {
+  const preview = document.getElementById('wartung-preview');
+  const hasDate = r.naechsteWartungMonat && r.naechsteWartungJahr;
+  const dateStr = hasDate ? `${String(r.naechsteWartungMonat).padStart(2,'0')}.${r.naechsteWartungJahr}` : '–';
+  const isoDate = hasDate ? `${r.naechsteWartungJahr}-${String(r.naechsteWartungMonat).padStart(2,'0')}-01` : null;
+  window._wartungPending = { r, isoDate };
+  preview.innerHTML = `
+    <div style="font-weight:700;font-size:13px;margin-bottom:8px;color:var(--text);">Erkannte Daten</div>
+    <div style="display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text);margin-bottom:12px;">
+      ${r.firmenname ? `<div><b>Firma:</b> ${escHtml(r.firmenname)}</div>` : ''}
+      ${r.adresse    ? `<div><b>Adresse:</b> ${escHtml(r.adresse)}</div>` : ''}
+      ${r.telefon    ? `<div><b>Tel:</b> ${escHtml(r.telefon)}</div>` : ''}
+      ${r.email      ? `<div><b>E-Mail:</b> ${escHtml(r.email)}</div>` : ''}
+      ${r.website    ? `<div><b>Web:</b> ${escHtml(r.website)}</div>` : ''}
+      <div><b>Nächste Wartung:</b> ${dateStr}</div>
+      ${r.hinweis ? `<div style="color:var(--muted);font-size:12px;margin-top:4px;">${escHtml(r.hinweis)}</div>` : ''}
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button onclick="acceptWartungResult()" style="flex:1;padding:9px;border-radius:10px;background:var(--primary);color:#fff;border:none;cursor:pointer;font-size:13px;font-weight:600;">Übernehmen</button>
+      <button onclick="document.getElementById('wartung-preview').style.display='none'" style="padding:9px 16px;border-radius:10px;background:var(--bg);color:var(--text);border:1.5px solid var(--border);cursor:pointer;font-size:13px;">Verwerfen</button>
+    </div>`;
+}
+
+function acceptWartungResult() {
+  const { r, isoDate } = window._wartungPending || {};
+  if (!r) return;
+  const installateur = {
+    firmenname: r.firmenname || '',
+    adresse:    r.adresse    || '',
+    telefon:    r.telefon    || '',
+    email:      r.email      || '',
+    website:    r.website    || '',
+  };
+  const hasContact = Object.values(installateur).some(v => v);
+  if (hasContact) {
+    saveMD('installateur', installateur);
+    const instId = upsertInstallateur(installateur);
+    saveMD('installateur_id', instId);
+  }
+  if (isoDate) {
+    saveMD('naechsteWartung', isoDate);
+    saveMD('reminderWartung', true);
+    const el = document.querySelector('[oninput*="naechsteWartung"]');
+    if (el) el.value = isoDate;
+  }
+  delete window._wartungPending;
+  renderPage();
 }
 
 // ─── Mein Gerät helpers ───────────────────────────────────────────────────────
