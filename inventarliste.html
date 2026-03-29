@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Inventarliste – Haushalt-Genie</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f7f7f5;
+      color: #1a1a1a;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    .screen-only { display: block; }
+    .page-wrap {
+      max-width: 680px;
+      margin: 0 auto;
+      padding: 0 0 120px;
+    }
+
+    .top-bar {
+      background: #fff;
+      border-bottom: 1px solid #e8e8e8;
+      padding: 14px 20px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .top-bar a { color: #888; text-decoration: none; display: flex; align-items: center; }
+    .top-bar-title { font-size: 16px; font-weight: 700; color: #1a1a1a; }
+
+    .export-btn {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #1b5e45;
+      color: #fff;
+      border: none;
+      border-radius: 14px;
+      padding: 14px 32px;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 4px 16px rgba(27,94,69,0.25);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      white-space: nowrap;
+    }
+
+    .doc-header { padding: 28px 20px 16px; }
+    .doc-title { font-size: 22px; font-weight: 800; color: #1a1a1a; margin-bottom: 4px; }
+    .doc-meta { font-size: 12px; color: #888; }
+
+    .summary-bar {
+      margin: 0 16px 16px;
+      padding: 12px 16px;
+      background: rgba(27,94,69,0.06);
+      border-radius: 10px;
+      font-size: 13px;
+      color: #1b5e45;
+      font-weight: 600;
+      display: flex;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+
+    .room-section {
+      margin: 0 16px 20px;
+      background: #fff;
+      border: 1px solid #e8e8e8;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .room-header {
+      background: #f0f0eb;
+      padding: 10px 16px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #555;
+    }
+
+    .device-row {
+      padding: 14px 16px;
+      border-bottom: 1px solid #f0f0eb;
+    }
+    .device-row:last-child { border-bottom: none; }
+
+    .device-name { font-size: 15px; font-weight: 700; color: #1a1a1a; margin-bottom: 6px; }
+    .device-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; }
+    .device-field { font-size: 12px; color: #555; }
+    .device-field span {
+      color: #888;
+      font-size: 11px;
+      display: block;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 1px;
+    }
+
+    .empty-state { padding: 48px 20px; text-align: center; color: #888; font-size: 14px; }
+
+    @media print {
+      .screen-only, .top-bar, .export-btn { display: none !important; }
+      body { background: #fff; font-size: 11pt; }
+      .page-wrap { max-width: 100%; padding: 0; }
+      .doc-header { padding: 0 0 16pt; }
+      .doc-title { font-size: 18pt; }
+      .room-section {
+        margin: 0 0 16pt;
+        border: 1px solid #ccc;
+        border-radius: 0;
+        page-break-inside: avoid;
+      }
+      .device-row { page-break-inside: avoid; }
+      .room-header { background: #f0f0f0 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .summary-bar { background: #f0f0f0 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0 0 16pt; }
+      @page { margin: 18mm 16mm 18mm 16mm; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="top-bar screen-only">
+    <a href="index.html">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l14 0"/><path d="M5 12l6 6"/><path d="M5 12l6 -6"/></svg>
+    </a>
+    <span class="top-bar-title">Inventarliste</span>
+    <span style="width:30px;"></span>
+  </div>
+
+  <div class="page-wrap" id="app"></div>
+
+  <button class="export-btn screen-only" onclick="window.print()">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 17h2a2 2 0 0 0 2 -2v-4a2 2 0 0 0 -2 -2h-14a2 2 0 0 0 -2 2v4a2 2 0 0 0 2 2h2"/><path d="M17 9v-4a2 2 0 0 0 -2 -2h-6a2 2 0 0 0 -2 2v4"/><path d="M7 15a2 2 0 0 1 2 -2h6a2 2 0 0 1 2 2v4a2 2 0 0 1 -2 2h-6a2 2 0 0 1 -2 -2l0 -4"/></svg>
+    Als PDF speichern
+  </button>
+
+  <script>
+    const devices = JSON.parse(localStorage.getItem('hg_devices') || '[]');
+
+    const ROOM_LABELS = {
+      kueche:       'Küche',
+      bad:          'Bad',
+      wohnzimmer:   'Wohnzimmer',
+      schlafzimmer: 'Schlafzimmer',
+      buero:        'Büro',
+      keller:       'Keller',
+      garage:       'Garage',
+      abstellraum:  'Abstellraum',
+      kinderzimmer: 'Kinderzimmer',
+      sonstiges:    'Sonstiges',
+    };
+
+    const ROOM_ORDER = ['kueche','bad','wohnzimmer','schlafzimmer','buero','keller','garage','abstellraum','kinderzimmer','sonstiges'];
+
+    function esc(s) {
+      return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function fmt(value) { return value ? esc(value) : null; }
+
+    function fmtDate(iso) {
+      if (!iso) return null;
+      const parts = iso.split('-');
+      if (parts.length === 3) return `${parts[2]}.${parts[1]}.${parts[0]}`;
+      if (parts.length === 2) return `${parts[1]}.${parts[0]}`;
+      return esc(iso);
+    }
+
+    function fmtEur(val) {
+      if (!val && val !== 0) return null;
+      const n = Number(val);
+      if (isNaN(n)) return null;
+      return n.toLocaleString('de-AT', { style: 'currency', currency: 'EUR' });
+    }
+
+    function field(label, value) {
+      if (!value) return '';
+      return `<div class="device-field"><span>${label}</span>${value}</div>`;
+    }
+
+    function render() {
+      const app = document.getElementById('app');
+
+      if (!devices.length) {
+        app.innerHTML = `
+          <div class="doc-header">
+            <div class="doc-title">Inventarliste</div>
+          </div>
+          <div class="empty-state">Noch keine Geräte gespeichert.</div>`;
+        return;
+      }
+
+      const grouped = {};
+      devices.forEach(d => {
+        const room = d.room || 'sonstiges';
+        if (!grouped[room]) grouped[room] = [];
+        grouped[room].push(d);
+      });
+      Object.values(grouped).forEach(arr => arr.sort((a,b) => (a.name||'').localeCompare(b.name||'', 'de')));
+
+      const total = devices.reduce((sum, d) => sum + (Number((d.myDevice||{}).kaufpreis) || 0), 0);
+      const withPrice = devices.filter(d => (d.myDevice||{}).kaufpreis).length;
+      const today = new Date().toLocaleDateString('de-AT', { day:'2-digit', month:'2-digit', year:'numeric' });
+
+      const sections = ROOM_ORDER
+        .filter(id => grouped[id])
+        .map(id => {
+          const rows = grouped[id].map(d => {
+            const md = d.myDevice || {};
+            return `
+              <div class="device-row">
+                <div class="device-name">${esc(d.name || '–')}</div>
+                <div class="device-grid">
+                  ${field('Hersteller',     fmt(d.marke))}
+                  ${field('Modell',         fmt(d.modell))}
+                  ${field('Seriennummer',   fmt(md.seriennummer))}
+                  ${field('Kaufpreis',      fmtEur(md.kaufpreis))}
+                  ${field('Kaufdatum',      fmtDate(md.kaufdatum))}
+                  ${field('Händler',        fmt(md.haendler))}
+                  ${field('Garantie bis',   fmtDate(md.garantieende))}
+                  ${field('Letzte Wartung', fmtDate(md.letzteWartung))}
+                </div>
+              </div>`;
+          }).join('');
+          return `
+            <div class="room-section">
+              <div class="room-header">${esc(ROOM_LABELS[id] || id)} (${grouped[id].length})</div>
+              ${rows}
+            </div>`;
+        }).join('');
+
+      app.innerHTML = `
+        <div class="doc-header">
+          <div class="doc-title">Inventarliste</div>
+          <div class="doc-meta">Erstellt am ${today} · ${devices.length} Geräte · Haushalt-Genie</div>
+        </div>
+        <div class="summary-bar">
+          <span>${devices.length} Geräte erfasst</span>
+          ${withPrice > 0 ? `<span>Gesamtwert: ${fmtEur(total)}<span style="font-weight:400;font-size:11px;"> (${withPrice} Geräte mit Kaufpreis)</span></span>` : ''}
+        </div>
+        ${sections}`;
+    }
+
+    render();
+  </script>
+</body>
+</html>
