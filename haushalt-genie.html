@@ -50,6 +50,9 @@
 <div id="app"></div>
 
 <script>
+// ─── AI Model ─────────────────────────────────────────────────────────────────
+const AI_MODEL = 'claude-3-5-sonnet-20241022';
+
 // ─── Agent definitions ────────────────────────────────────────────────────────
 const AGENTS = [
   {
@@ -199,7 +202,7 @@ async function callAgent(agent, device) {
     : agent.prompt(device.name, device.marke, device.modell);
 
   const body = {
-    model: 'claude-sonnet-4-20250514',
+    model: AI_MODEL,
     max_tokens: agent.returnsJson ? 800 : 1024,
     messages: [{ role: 'user', content: userContent }],
   };
@@ -309,7 +312,7 @@ async function analyzePhoto(base64, mime) {
       'anthropic-dangerous-direct-browser-access': 'true',
     },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
+      model: AI_MODEL,
       max_tokens: 256,
       messages: [{ role: 'user', content: [
         { type: 'image', source: { type: 'base64', media_type: mime, data: base64 } },
@@ -394,7 +397,7 @@ async function sendMessage(deviceId, userText) {
         'anthropic-dangerous-direct-browser-access': 'true',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model: AI_MODEL,
         max_tokens: 1024,
         system: `Du bist Haushalt-Genie, ein präziser KI-Assistent für Haushaltsgeräte. Du hilfst dem Nutzer mit allen Fragen zu: ${device.name} (${device.marke}, Modell: ${device.modell}). Antworte immer auf Deutsch. Sei konkret und praktisch.`,
         messages: chat.map(m => ({ role: m.role, content: m.content })),
@@ -655,7 +658,7 @@ async function verkaufSchritt1(deviceId) {
   const kaufjahr = device.myDevice?.kaufdatum ? device.myDevice.kaufdatum.slice(0,4) : 'unbekannt';
   try {
     const resp = await fetch('https://api.anthropic.com/v1/messages', { method:'POST', headers:{'x-api-key':state.apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true','content-type':'application/json'},
-      body: JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:400,
+      body: JSON.stringify({ model:AI_MODEL, max_tokens:400,
         system:`You are a pricing expert for second-hand household devices in Austria. Return ONLY JSON: {"min_price":number,"max_price":number,"recommended_price":number,"reasoning":"one sentence in German"}`,
         messages:[{role:'user',content:`Device: ${device.name} ${device.marke} ${device.modell}\nOriginal price: ${v.kaufpreis||'unbekannt'} EUR\nYear: ${kaufjahr}\nCondition: ${v.zustand}`}] }) });
     if (!resp.ok) throw new Error(`API ${resp.status}`);
@@ -673,7 +676,7 @@ async function verkaufSchritt2(deviceId) {
   const kaufjahr = device.myDevice?.kaufdatum ? device.myDevice.kaufdatum.slice(0,4) : 'unbekannt';
   try {
     const resp = await fetch('https://api.anthropic.com/v1/messages', { method:'POST', headers:{'x-api-key':state.apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true','content-type':'application/json'},
-      body: JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:800,
+      body: JSON.stringify({ model:AI_MODEL, max_tokens:800,
         system:`Help sell a household device on willhaben.at in friendly Austrian German. Return ONLY JSON: {"titel":"max 60 chars","beschreibung":"100-200 words","kategorie_vorschlag":"German category","suchbegriffe":["tag1","tag2","tag3"]}`,
         messages:[{role:'user',content:`Name: ${device.name}\nMarke: ${device.marke}\nModell: ${device.modell}\nBaujahr: ${kaufjahr}\nZustand: ${v.zustand}\nPreis: ${v.finalPrice} EUR`}] }) });
     if (!resp.ok) throw new Error(`API ${resp.status}`);
@@ -787,7 +790,7 @@ async function ersetzenLadeFeatures(deviceId) {
   e.featuresLoading = true; e.featuresError = null; render();
   try {
     const resp = await fetch('https://api.anthropic.com/v1/messages', { method:'POST', headers:{'x-api-key':state.apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true','content-type':'application/json'},
-      body: JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:600,
+      body: JSON.stringify({ model:AI_MODEL, max_tokens:600,
         system:`Generate feature questions for device replacement. Return ONLY JSON array.`,
         messages:[{role:'user',content:`Replace: ${device.name} (${device.marke} ${device.modell}). Generate 4 questions in German. Return ONLY: [{"question":"...","type":"yesno","options":[]}]`}] }) });
     if (!resp.ok) throw new Error(`API ${resp.status}`);
@@ -806,7 +809,7 @@ async function ersetzenLadeEmpfehlungen(deviceId) {
   const prioLabels = e.prios.map((id,i)=>`${i+1}. ${ERSETZEN_PRIOS.find(p=>p.id===id)?.label||id}`).join(', ');
   try {
     const resp = await fetch('https://api.anthropic.com/v1/messages', { method:'POST', headers:{'x-api-key':state.apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true','content-type':'application/json'},
-      body: JSON.stringify({ model:'claude-sonnet-4-20250514', max_tokens:1500,
+      body: JSON.stringify({ model:AI_MODEL, max_tokens:1500,
         system:`Expert consumer electronics advisor for Austria. Return ONLY JSON: {"summary":"one sentence German","recommendations":[{"rank":1,"name":"Full name","brand":"Brand","price_estimate":"ca. EUR X-Y","why":"2 sentences German","top_features":["f1","f2"],"energy_class":"A++","search_term":"search term"}]}`,
         messages:[{role:'user',content:`Replace: ${device.marke} ${device.modell} ${device.name}.\nReason: ${grundLabel}\nBudget: EUR ${e.budgetLow}–${e.budgetHigh}, importance: ${e.preisWichtigkeit}\nPriorities: ${prioLabels}\nProvide exactly 3 recommendations.`}] }) });
     if (!resp.ok) throw new Error(`API ${resp.status}`);

@@ -256,7 +256,7 @@ async function sendChatMessage(deviceId) {
       .map(m => ({ role: m.role, content: m.message }));
 
     const data = await callAnthropic({
-      model: 'claude-sonnet-4-20250514',
+      model: window.AI_MODEL,
       max_tokens: 800,
       system: buildSystemPrompt(device),
       messages: [

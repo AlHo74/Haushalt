@@ -594,7 +594,7 @@ async function analyzeWartungsetikett(base64, mimeType) {
       'content-type': 'application/json'
     },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
+      model: window.AI_MODEL,
       max_tokens: 600,
       messages: [{
         role: 'user',

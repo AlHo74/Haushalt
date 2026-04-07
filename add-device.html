@@ -426,7 +426,7 @@ async function handlePhotoSelect(e) {
 
 async function analyzePhoto(base64, mime) {
   const data = await callAnthropic({
-    model: 'claude-sonnet-4-20250514',
+    model: window.AI_MODEL,
     max_tokens: 900,
     messages: [{ role: 'user', content: [
       { type: 'image', source: { type: 'base64', media_type: mime, data: base64 } },
@@ -506,7 +506,7 @@ async function lookupEAN(ean) {
 
   try {
     const data = await callAnthropic({
-      model: 'claude-sonnet-4-20250514',
+      model: window.AI_MODEL,
       max_tokens: 300,
       messages: [{ role: 'user', content:
         `A product has EAN/barcode: ${ean}
@@ -863,7 +863,7 @@ async function handleNameplatePhoto(e) {
 
 async function analyzeNameplate(base64, mime) {
   const data = await callAnthropic({
-    model: 'claude-sonnet-4-20250514',
+    model: window.AI_MODEL,
     max_tokens: 500,
     messages: [{ role: 'user', content: [
       { type: 'image', source: { type: 'base64', media_type: mime, data: base64 } },

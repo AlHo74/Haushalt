@@ -1,3 +1,6 @@
+// ─── AI Model ─────────────────────────────────────────────────────────────────
+window.AI_MODEL = 'claude-3-5-sonnet-20241022';
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 const ROOMS = [
   { id:'kueche',       label:'Küche',        iconKey:'room-kitchen',   icon: ICONS['room-kitchen'] },
@@ -193,6 +196,44 @@ function resetAll() {
   localStorage.removeItem('hg_chats');
   localStorage.removeItem('hg_apikey');
   navigate('main');
+}
+
+// ─── Data export / import ─────────────────────────────────────────────────────
+function exportData() {
+  const dump = {};
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k.startsWith('hg_')) dump[k] = localStorage.getItem(k);
+  }
+  dump['_exportedAt'] = new Date().toISOString();
+  dump['_version']    = '1.0';
+  const blob = new Blob([JSON.stringify(dump, null, 2)], { type: 'application/json' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `haushalt-genie-backup-${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('Backup erstellt ✓');
+}
+
+function importData(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const dump = JSON.parse(e.target.result);
+      let count = 0;
+      for (const [k, v] of Object.entries(dump)) {
+        if (k.startsWith('hg_')) { localStorage.setItem(k, v); count++; }
+      }
+      showToast(`${count} Einträge wiederhergestellt ✓`);
+      setTimeout(() => window.location.reload(), 800);
+    } catch {
+      showToast('Fehler beim Lesen der Datei');
+    }
+  };
+  reader.readAsText(file);
 }
 
 // ─── Toast ────────────────────────────────────────────────────────────────────

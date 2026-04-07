@@ -63,7 +63,7 @@ async function sellStep1(deviceId) {
 
   try {
     const data = await callAnthropic({
-      model: 'claude-sonnet-4-20250514',
+      model: window.AI_MODEL,
       max_tokens: 400,
       system: `You are a pricing expert for second-hand household devices in Austria.
 Return ONLY valid JSON, no other text:
@@ -118,7 +118,7 @@ async function sellStep2(deviceId) {
 
   try {
     const data = await callAnthropic({
-      model: 'claude-sonnet-4-20250514',
+      model: window.AI_MODEL,
       max_tokens: 800,
       system: `You are a listing expert for willhaben.at, Austria's largest classifieds platform.
 Write in friendly, honest Austrian German.

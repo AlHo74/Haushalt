@@ -97,7 +97,7 @@ Return ONLY valid JSON, no other text.`;
 // Always expects the model to return JSON.
 async function callAgentAPI(systemPrompt, userMessage) {
   const data = await callAnthropic({
-    model: 'claude-sonnet-4-20250514',
+    model: window.AI_MODEL,
     max_tokens: 1000,
     system: systemPrompt + GROUNDING_RULE,
     messages: [{ role: 'user', content: userMessage }],

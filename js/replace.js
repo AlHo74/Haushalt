@@ -93,7 +93,7 @@ async function loadReplaceFeatures(deviceId) {
 
   try {
     const data = await callAnthropic({
-      model: 'claude-sonnet-4-20250514',
+      model: window.AI_MODEL,
       max_tokens: 600,
       system: `Generate feature questions for recommending a replacement household device.
 Return ONLY a valid JSON array, no other text:
@@ -144,7 +144,7 @@ async function loadReplaceRecommendations(deviceId) {
 
   try {
     const data = await callAnthropic({
-      model: 'claude-sonnet-4-20250514',
+      model: window.AI_MODEL,
       max_tokens: 1500,
       system: `You are an expert consumer advisor for Austria (Austrian market, EUR prices).
 Return ONLY valid JSON, no other text:
