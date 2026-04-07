@@ -97,10 +97,11 @@ let form = {
   dataUrl:             null,
   photo:               editDevice?.photo        || null,
   mime:                editDevice?.photoMime    || null,
-  scanLoading:         false,
-  scanError:           null,
+  scanLoading:          false,
+  deepAnalysisRunning:  false,   // true during second-pass visual fingerprinting
+  scanError:            null,
   recognitionConfidence: null,   // 'high'|'medium'|'low'
-  showTSBanner:        false,    // yellow banner after low-confidence scan
+  showTSBanner:         false,   // yellow banner after low-confidence scan
 };
 
 // Typenschild wizard state
@@ -211,7 +212,7 @@ function buildHtml() {
       ${form.scanLoading ? `
         <div style="position:absolute;inset:0;background:rgba(0,0,0,0.55);display:flex;align-items:center;justify-content:center;gap:10px;color:#fff;">
           <div style="width:20px;height:20px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:spin 0.7s linear infinite;"></div>
-          <span style="font-size:13px;font-weight:500;">Gerät wird erkannt …</span>
+          <span style="font-size:13px;font-weight:500;">${form.deepAnalysisRunning ? 'Analysiere Details …' : 'Gerät wird erkannt …'}</span>
         </div>` : `
         <button onclick="clearPhoto()" style="position:absolute;top:6px;right:6px;background:rgba(0,0,0,0.6);border:none;color:#fff;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px;">✕</button>
         <div style="position:absolute;bottom:0;left:0;right:0;background:linear-gradient(to top,rgba(0,0,0,.5),transparent);padding:6px 10px;">
@@ -381,7 +382,8 @@ async function handlePhotoSelect(e) {
 
   try {
     const { dataUrl, base64, mime } = await resizeImage(file);
-    form = { ...form, ...cur, dataUrl, photo: base64, mime, scanLoading: true, scanError: null, showTSBanner: false };
+    form = { ...form, ...cur, dataUrl, photo: base64, mime,
+             scanLoading: true, deepAnalysisRunning: false, scanError: null, showTSBanner: false };
     renderPage();
 
     if (!state.apiKey) {
@@ -390,9 +392,9 @@ async function handlePhotoSelect(e) {
       return;
     }
 
+    // ── Pass 1: standard recognition ─────────────────────────────────────────
     const result = await analyzePhoto(base64, mime);
     const room   = result.room_suggestion ? (roomSuggestionToId(result.room_suggestion) || cur.room) : cur.room;
-    const shouldShowBanner = !result.can_proceed;
 
     form = {
       ...form,
@@ -400,26 +402,42 @@ async function handlePhotoSelect(e) {
       marke:  result.brand || cur.marke,
       modell: result.model || cur.modell,
       room,
-      scanLoading: false,
       scanError:   null,
       recognitionConfidence: result.confidence,
-      showTSBanner:   shouldShowBanner,
-      photoEra:       result.era                   || null,
-      extractedText:  result.extracted_text        || [],
-      photoNextHint:  result.next_photo_suggestion || null,
-      photoCandidates: result.candidates           || [],
+      photoEra:        result.era                   || null,
+      extractedText:   result.extracted_text        || [],
+      photoNextHint:   result.next_photo_suggestion || null,
+      photoCandidates: result.candidates            || [],
     };
+
+    // ── Pass 2: deep visual fingerprinting if confidence < high ───────────────
+    let canProceed = result.can_proceed;
+    if (result.confidence !== 'high') {
+      form = { ...form, scanLoading: true, deepAnalysisRunning: true };
+      renderPage();
+
+      const deep = await performDeepAnalysis(base64, mime, result);
+      if (deep) {
+        if (deep.brand)      form.marke  = deep.brand;
+        if (deep.model)      form.modell = deep.model;
+        if (deep.name)       form.name   = deep.name;
+        if (deep.confidence) form.recognitionConfidence = deep.confidence;
+        if (deep.can_proceed != null) canProceed = deep.can_proceed;
+      }
+    }
+
+    const shouldShowBanner = !canProceed && form.recognitionConfidence !== 'high';
+    form = { ...form, scanLoading: false, deepAnalysisRunning: false, showTSBanner: shouldShowBanner };
     renderPage();
 
     if (!shouldShowBanner) {
       showToast('Gerät erkannt ✓');
     } else {
-      // Auto-open TS wizard after 1.5s if can_proceed is false
       // next_photo_suggestion wird im TS-Wizard als erster Hinweis angezeigt
       setTimeout(() => openTSWizard(), 1500);
     }
   } catch (err) {
-    form = { ...form, scanLoading: false, scanError: err.message };
+    form = { ...form, scanLoading: false, deepAnalysisRunning: false, scanError: err.message };
     renderPage();
   }
 }
@@ -437,6 +455,43 @@ async function analyzePhoto(base64, mime) {
   const match = text.match(/\{[\s\S]*\}/);
   if (!match) throw new Error('Konnte Gerät nicht identifizieren.');
   return JSON.parse(match[0]);
+}
+
+// ── Pass 2: Visual Fingerprinting ────────────────────────────────────────────
+async function performDeepAnalysis(base64, mime, initialResult) {
+  const brand    = initialResult.brand    || 'unbekannte Marke';
+  const category = initialResult.category || 'Haushaltsgerät';
+  const prompt = `This is a ${brand} ${category}. Deeply analyze its "Visual Fingerprint": focus on the button layout, display size, control knob positions, and specific design patterns. Use these unique visual cues to pinpoint the exact sub-series or model number.
+
+Previously extracted text: ${JSON.stringify(initialResult.extracted_text || [])}
+First-pass candidates: ${JSON.stringify(initialResult.candidates || [])}
+
+Return ONLY valid JSON:
+{
+  "brand": "Hersteller",
+  "model": "genaue Modellnummer oder Modellreihe",
+  "name": "Gerätename auf Deutsch",
+  "confidence": "high|medium|low",
+  "can_proceed": true,
+  "visual_fingerprint": "Kurze Beschreibung der erkannten visuellen Merkmale (Knöpfe, Display, Design)"
+}`;
+
+  try {
+    const data = await callAnthropic({
+      model: window.AI_MODEL,
+      max_tokens: 500,
+      messages: [{ role: 'user', content: [
+        { type: 'image', source: { type: 'base64', media_type: mime, data: base64 } },
+        { type: 'text', text: prompt },
+      ]}],
+    });
+    const text  = data.content[0].text;
+    const match = text.match(/\{[\s\S]*\}/);
+    if (!match) return null;
+    return JSON.parse(match[0]);
+  } catch {
+    return null; // deep analysis is best-effort; don't break the flow
+  }
 }
 
 function clearPhoto() {
