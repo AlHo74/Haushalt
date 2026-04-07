@@ -1,5 +1,5 @@
 // ─── AI Model ─────────────────────────────────────────────────────────────────
-window.AI_MODEL = 'claude-3-5-sonnet-latest';
+window.AI_MODEL = 'claude-sonnet-4-6';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const ROOMS = [
