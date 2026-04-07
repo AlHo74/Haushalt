@@ -50,6 +50,14 @@ const HERSTELLER_URLS = {
     manual_portal: 'https://www.philips.at/service/support',
     search_query:  'site:philips.at [MODEL] Bedienungsanleitung',
   },
+  'Neff': {
+    manual_portal: 'https://www.neff-home.com/at/service/gebrauchsanleitungen',
+    search_query:  'site:neff-home.com [MODEL] Gebrauchsanleitung',
+  },
+  'Gaggenau': {
+    manual_portal: 'https://www.gaggenau.com/at/support/gebrauchsanweisungen',
+    search_query:  'site:gaggenau.com [MODEL] Gebrauchsanweisung',
+  },
 };
 
 const AGGREGATOR_URLS = [
@@ -75,15 +83,18 @@ const DOMAIN_ALLOWLIST = [
   'aeg.de', 'aeg.at', 'electrolux.at', 'electrolux.de',
   'samsung.com', 'lg.com', 'whirlpool.at', 'bauknecht.eu',
   'philips.com', 'philips.at', 'liebherr.com', 'gorenje.com',
+  'neff-home.com', 'gaggenau.com',
   'manualslib.com', 'manualslib.de', 'bedienungsanleitu.ng',
   'devicemanuals.eu', 'media3.bosch-home.com', 'media.siemens-home.bsh-group.com',
 ];
 
 const MODEL_URL_PATTERNS = {
-  'Bosch':   model => `https://www.bosch-home.com/at/service/gebrauchsanleitungen.html?query=${encodeURIComponent(model)}`,
-  'Siemens': model => `https://www.siemens-home.bsh-group.com/de/kundendienst/hilfe/bedienungsanleitungen?query=${encodeURIComponent(model)}`,
-  'Miele':   model => `https://www.miele.at/f/de/gebrauchsanweisungen-5231.aspx?q=${encodeURIComponent(model)}`,
-  'AEG':     model => `https://www.aeg.de/support/user-manuals/?q=${encodeURIComponent(model)}`,
+  'Bosch':    token => `https://www.bosch-home.com/at/service/gebrauchsanleitungen.html?query=${encodeURIComponent(token)}`,
+  'Siemens':  token => `https://www.siemens-home.bsh-group.com/de/kundendienst/hilfe/bedienungsanleitungen?query=${encodeURIComponent(token)}`,
+  'Miele':    token => `https://www.miele.at/f/de/gebrauchsanweisungen-5231.aspx?q=${encodeURIComponent(token)}`,
+  'AEG':      token => `https://www.aeg.de/support/user-manuals/?q=${encodeURIComponent(token)}`,
+  'Neff':     token => `https://www.neff-home.com/at/service/gebrauchsanleitungen?q=${encodeURIComponent(token)}`,
+  'Gaggenau': token => `https://www.gaggenau.com/at/support/gebrauchsanweisungen?q=${encodeURIComponent(token)}`,
 };
 
 // ─── Grounding rule (appended to every agent system prompt) ───────────────────
@@ -110,39 +121,49 @@ async function callAgentAPI(systemPrompt, userMessage) {
 
 // ─── Agent 1: Helpers ─────────────────────────────────────────────────────────
 function normalizeModel(model) {
-  // Strip spaces, dashes, dots for URL matching and search
-  // "WAE 28.443" → "WAE28443"
+  // Strip spaces, dashes, dots — but NOT slashes: E-Numbers like "WAX28E75/01"
+  // must keep the slash to remain uniquely identifiable.
   return (model || '').replace(/[\s\-\.]/g, '').toUpperCase();
 }
 
-function buildSearchLinks(brand, model, category) {
-  const q        = `${brand} ${model} Bedienungsanleitung PDF`.trim();
-  const qEncoded = encodeURIComponent(q);
+function buildSearchLinks(brand, model, category, eNumber) {
+  // E-Number is the highest-precision identifier when available
+  const searchToken = eNumber || model;
+  const links = [];
 
-  const links = [
-    {
-      label:  'ManualsLib suchen',
-      url:    `https://www.manualslib.de/search/?q=${encodeURIComponent(`${brand} ${model}`)}`,
-      source: 'manualslib.de',
-    },
-    {
-      label:  'Google suchen',
-      url:    `https://www.google.com/search?q=${qEncoded}`,
+  // 1. Direct search — brand + model + E-Number + pdf
+  const directQ = [brand, model, eNumber, 'Bedienungsanleitung PDF'].filter(Boolean).join(' ');
+  links.push({
+    label:  'Direkt-Suche (Modell)',
+    url:    `https://www.google.com/search?q=${encodeURIComponent(directQ)}`,
+    source: 'google.com',
+  });
+
+  // 2. Manufacturer site: search (uses the curated site: query pattern)
+  const mfrEntry = HERSTELLER_URLS[brand];
+  if (mfrEntry) {
+    const mfrQ = mfrEntry.search_query.replace('[MODEL]', searchToken);
+    links.push({
+      label:  'Hersteller-Suche',
+      url:    `https://www.google.com/search?q=${encodeURIComponent(mfrQ)}`,
       source: 'google.com',
-    },
-    {
-      label:  'bedienungsanleitu.ng suchen',
-      url:    `https://www.bedienungsanleitu.ng/search?q=${encodeURIComponent(`${brand} ${model}`)}`,
-      source: 'bedienungsanleitu.ng',
-    },
-  ];
+    });
+  }
 
-  // Prepend manufacturer portal link if known
+  // 3. ManualsLib portal search via Google site: operator
+  const mlQ = `site:manualslib.de ${brand} ${searchToken}`;
+  links.push({
+    label:  'Portal-Suche (ManualsLib)',
+    url:    `https://www.google.com/search?q=${encodeURIComponent(mlQ)}`,
+    source: 'manualslib.de',
+  });
+
+  // Prepend direct manufacturer portal link if we have a URL constructor
   if (MODEL_URL_PATTERNS[brand]) {
     links.unshift({
       label:  `${brand} Hersteller-Portal`,
-      url:    MODEL_URL_PATTERNS[brand](model),
-      source: HERSTELLER_URLS[brand]?.manual_portal || null,
+      url:    MODEL_URL_PATTERNS[brand](searchToken),
+      source: mfrEntry?.manual_portal || null,
     });
   }
 
@@ -179,21 +200,25 @@ async function runAgent1(device) {
   const category  = device.category || '';
   const modelNorm = normalizeModel(model);
 
+  // E-Number is the primary search token when available — it uniquely identifies
+  // a specific production variant (e.g. WAX28E75/01 vs WAX28E75/02).
+  const primaryToken = eNumber || model;
+
   // Always build search links — guaranteed fallback regardless of other phases
-  const searchLinks = buildSearchLinks(brand, model, category);
+  const searchLinks = buildSearchLinks(brand, model, category, eNumber);
 
   // ── Phase 1: Deterministic URL construction (no Claude, no hallucination) ──
   let phase1Result = null;
   const mfrEntry   = HERSTELLER_URLS[brand] || null;
 
-  if (mfrEntry && model && MODEL_URL_PATTERNS[brand]) {
+  if (mfrEntry && primaryToken && MODEL_URL_PATTERNS[brand]) {
     phase1Result = {
       found:                  true,
       confidence:             'medium',    // search result page, not a direct PDF
       source_phase:           1,
       brand_confirmed:        true,
       model_match_confirmed:  false,       // user must confirm on the page
-      manual_url:             MODEL_URL_PATTERNS[brand](model),
+      manual_url:             MODEL_URL_PATTERNS[brand](primaryToken),
       source_name:            `${brand} Hersteller-Portal`,
       source_domain_verified: true,        // deterministically constructed
     };
@@ -210,16 +235,23 @@ async function runAgent1(device) {
   const system = `You are Agent 1 of Haushalt-Genie. Your job is to find Bedienungsanleitungen
 (user manuals in German) for household devices sold in Austria/Germany.
 
+KEY CONCEPT — E-Number as Unique ID:
+The E-Number (E-Nr) uniquely identifies a specific production variant of a device
+(e.g. WAX28E75/01 differs from WAX28E75/02). When an E-Number is provided, treat it
+as the PRIMARY search token — it is more precise than the base model number alone.
+Your most valuable output is a high-precision search_query_suggestion using the
+E-Number, not recalling a URL from memory.
+
 STRICT RULES — read carefully:
 1. NEVER invent or guess a URL. If you are not 100% certain a URL exists for
-   this EXACT model, do NOT include it. Set manual_url to null.
+   this EXACT model/E-Number, do NOT include it. Set manual_url to null.
 2. A URL is only valid if its domain is in this allowlist:
    ${DOMAIN_ALLOWLIST.join(', ')}
 3. You MAY include a manual_url ONLY if you have seen this exact URL pattern
    in your training data for this specific model number.
 4. If unsure about the URL: set manual_url to null and found to false.
-   The search_query_suggestion is more valuable than a wrong URL.
-5. Always provide a search_query_suggestion — this cannot be wrong.
+   A precise search_query_suggestion is more valuable than a wrong URL.
+5. Always provide search_query_suggestion — use the E-Number when available.
 6. Provide 3 quick_start_tips in German based on your knowledge of this device type.
 
 Return ONLY this JSON:
@@ -232,7 +264,7 @@ Return ONLY this JSON:
   "manual_url": "https://... or null",
   "source_name": "name of source or null",
   "source_domain_verified": false,
-  "search_query_suggestion": "best German search query for this device manual",
+  "search_query_suggestion": "best German search query for this device manual — include E-Number if given",
   "key_specs": { "capacity": null, "energy_class": null, "special_features": [] },
   "programs": [],
   "quick_start_tips": [],
@@ -241,12 +273,13 @@ Return ONLY this JSON:
 
   const user = `Find the Bedienungsanleitung for:
 Brand: ${brand}
-Model: ${model}${modelNorm !== model.toUpperCase() ? `\nNormalized model: ${modelNorm}` : ''}${eNumber ? `\nE-Number: ${eNumber}` : ''}
+Model: ${model}${modelNorm !== model.toUpperCase() ? `\nNormalized model: ${modelNorm}` : ''}${eNumber ? `\nE-Number (Unique ID — use as primary search token): ${eNumber}` : ''}
 Name: ${name}${category ? `\nCategory: ${category}` : ''}
 
 Known aggregator search queries (use as inspiration for search_query_suggestion):
 ${aggregatorHints}
 
+${eNumber ? `IMPORTANT: The E-Number "${eNumber}" is the most precise identifier. Prioritize it in search_query_suggestion over the base model number.` : ''}
 Remember: manual_url must be null unless you are 100% certain it exists for this EXACT model.`;
 
   let claudeResult;
@@ -257,7 +290,7 @@ Remember: manual_url must be null unless you are 100% certain it exists for this
       found: false, confidence: 'low', source_phase: 2,
       brand_confirmed: false, model_match_confirmed: false,
       manual_url: null, source_name: null, source_domain_verified: false,
-      search_query_suggestion: `${brand} ${model} Bedienungsanleitung PDF`,
+      search_query_suggestion: `${brand} ${primaryToken} Bedienungsanleitung PDF`,
       key_specs: {}, programs: [], quick_start_tips: [],
       warning: err.message,
     };
@@ -310,11 +343,13 @@ Remember: manual_url must be null unless you are 100% certain it exists for this
   const d = state.devices.find(x => x.id === device.id);
   if (d) {
     d.manual_search_log = {
-      timestamp:  Date.now(),
+      timestamp:    Date.now(),
       brand, model,
-      result:     result._verified ? 'found' : (result.found ? 'unverified' : 'not_found'),
-      source:     result.source_name || null,
-      confidence: result.confidence  || null,
+      e_number:     eNumber || null,
+      primary_token: primaryToken,
+      result:       result._verified ? 'found' : (result.found ? 'unverified' : 'not_found'),
+      source:       result.source_name || null,
+      confidence:   result.confidence  || null,
     };
     saveDevices();
   }
